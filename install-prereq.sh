@@ -1,12 +1,16 @@
 #!/bin/bash
 
 set -e
-APP_DIR="/opt/network_manager"
-REPO_URL="https://github.com/airani051346/deployDev.git"  # Replace with your actual repo
+
+echo "🔧 udpade available apt package..."
+sudo apt update
+sudo DEBIAN_FRONTEND=noninteractive apt upgrade -yq
 
 echo "🔧 Installing dependencies..."
-sudo apt update
 sudo apt install -y python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git
+
+APP_DIR="/opt/network_manager"
+REPO_URL="https://github.com/airani051346/deployDev.git"  # Replace with your actual repo
 
 echo "📁 Creating application directory..."
 sudo mkdir -p "$APP_DIR"
