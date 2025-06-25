@@ -8,7 +8,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt upgrade -yq
 
 echo "🔧 Installing dependencies..."
 sudo DEBIAN_FRONTEND=noninteractive apt install -yq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
-    python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git gunicorn flask paramiko requests
+    python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git 
 
 export APP_DIR="/opt/network_manager"
 export REPO_URL="https://github.com/airani051346/deployDev.git"  # Replace with your actual repo
@@ -24,6 +24,8 @@ echo "🐍 Setting up virtual environment..."
 cd "$APP_DIR/app"
 sudo python3 -m venv venv
 source venv/bin/activate
+pip install --upgrade pip
+pip install flask gunicorn paramiko requests
 
 echo "📦 Initializing SQLite database..."
 cat > init_db.sql <<EOF
