@@ -24,8 +24,8 @@ echo "🐍 Setting up virtual environment..."
 cd "$APP_DIR/app"
 sudo python3 -m venv venv
 source venv/bin/activate
-pip install --upgrade pip
-pip install flask gunicorn paramiko requests
+sudo pip install --upgrade pip
+sudo pip install flask gunicorn paramiko requests
 
 echo "📦 Initializing SQLite database..."
 cat > init_db.sql <<EOF
