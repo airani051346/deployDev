@@ -22,10 +22,13 @@ sudo git clone "$REPO_URL" "$APP_DIR"
 
 echo "🐍 Setting up virtual environment..."
 cd "$APP_DIR/app"
+
+sudo chown -R $USER:$USER "$APP_DIR"
+
 sudo python3 -m venv venv
 source venv/bin/activate
-sudo pip install --upgrade pip
-sudo pip install flask gunicorn paramiko requests
+pip install --upgrade pip
+pip install flask gunicorn paramiko requests
 
 echo "📦 Initializing SQLite database..."
 cat > init_db.sql <<EOF
