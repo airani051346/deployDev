@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+{% block title %}Workers{% endblock %}
+
+{% block content %}
+<h2 class="mb-4 text-xl font-semibold">Worker Dashboard</h2>
+
+<div style="margin-bottom: 12px;">
+  Filter by IP:
+  <input type="text" id="ip-filter" placeholder="e.g. 192.168.1.10" style="padding: 6px; width: 250px; margin-right: 16px;">
+  Filter by Status:
+  <select id="status-filter" style="padding: 6px; margin-right: 16px;">
+    <option value="">All</option>
+    <option value="claimed">Claimed</option>
+    <option value="running">Running</option>
+    <option value="error">Error</option>
+    <option value="stopped">Stopped</option>
+  </select>
+  <button onclick="clearFilters()" style="padding: 6px;">Clear Filters</button>
+</div>
+
+<div class="table-responsive">
+  <table class="table" id="worker-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Discovered ID</th>
+        <th>IP Address</th>
+        <th>Status</th>
+        <th>PID</th>
+        <th>Stored Config</th>
+        <th>Actions</th>
+        <th>Log</th>
+      </tr>
+    </thead>
+    <tbody id="workers-body"></tbody>
+  </table>
+</div>
+
+<script>
+let allWorkers = [];
+let discoveredMap = {};
+let discoveredStatusMap = {};
+let credentialsList = [];
+const activeSSEConnections = {};
+
+function closeSSEConnection(workerId) {
+  if (activeSSEConnections[workerId]) {
+    activeSSEConnections[workerId].close();
+    delete activeSSEConnections[workerId];
+  }
+}
+
+
+function toggleWorker(id) {
+  const btn = document.getElementById(`toggle-${id}`);
+  const logEl = document.getElementById(`log-${id}`);
+  if (!logEl) return;
+  logEl.innerText = 'Starting...';
+  fetch(`/app/workers/${id}/start`, { method: 'POST' }).then(() => {
+    const evtSource = new EventSource(`/app/worker/${id}/sse`);
+    activeSSEConnections[id] = evtSource;
+    evtSource.onmessage = e => {
+      if (e.data === '[SSE_END]') {
+        evtSource.close();
+        delete activeSSEConnections[id];
+        return;
+      }
+      const currentLog = document.getElementById(`log-${id}`);
+      if (currentLog) {
+        currentLog.innerHTML += colorizeLog(e.data) + '<br>';
+        currentLog.scrollTop = currentLog.scrollHeight;
+      }
+    };
+    evtSource.onerror = () => {
+      const currentLog = document.getElementById(`log-${id}`);
+      if (currentLog) currentLog.innerHTML += '<span class="error">❌ SSE error</span><br>';
+      evtSource.close();
+      delete activeSSEConnections[id];
+    };
+  });
+}
+
+function colorizeLog(raw) {
+  return (raw || '')
+    .replace(/^✅.*/gm, m => `<span class="success">${m}</span>`)
+    .replace(/^❌.*/gm, m => `<span class="error">${m}</span>`)
+    .replace(/^ERR: .*/gm, m => `<span class="error">${m}</span>`)
+    .replace(/^> .*/gm, m => `<span class="command">${m}</span>`)
+    .replace(/^.*\^.*$/gm, m => `<span class="pointer">${m}</span>`)
+    .replace(/.*Bad parameter.*/gi, m => `<span class="error">${m}</span>`);
+}
+
+function clearFilters() {
+  document.getElementById('ip-filter').value = '';
+  document.getElementById('status-filter').value = '';
+  applyFilters();
+}
+
+function streamWorkerLog(id) {
+  closeSSEConnection(id);
+  const logEl = document.getElementById(`log-${id}`);
+  logEl.innerHTML = '';
+  logEl.dataset.live = 'true'; // markiere als aktives SSE-Log
+
+  const evtSource = new EventSource(`/app/worker/${id}/stream`);
+  activeSSEConnections[id] = evtSource;
+  evtSource.onmessage = e => {
+    if (e.data === '[SSE_END]') {
+      evtSource.close();
+      return;
+    }
+    const raw = (e.data || '').replace(/\\n/g, '\n');
+    const html = colorizeLog(raw);
+    logEl.innerHTML += html + '<br>'; // ensure each line breaks properly
+    logEl.scrollTop = logEl.scrollHeight;
+  };
+
+  evtSource.onerror = err => {
+    logEl.innerHTML += '<span class="error">❌ SSE connection error</span><br>';
+    evtSource.close();
+  };
+}
+function pollActiveWorkerLogs() {
+  allWorkers.forEach(w => {
+    const logEl = document.getElementById(`log-${w.id}`);
+    const statusEl = document.getElementById(`status-${w.id}`);
+    const isLive = logEl?.dataset.live === 'true';
+    const isRunning = statusEl?.innerText === 'running';
+
+    if (isLive && isRunning) {
+      fetch(`/app/worker/${w.id}/log_tail`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.log) {
+            logEl.innerHTML = colorizeLog(data.log);
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+        });
+    }
+  });
+}
+
+async function toggleWorker(id) {
+  const btn = document.getElementById(`toggle-${id}`);
+  const log = document.getElementById(`log-${id}`);
+  const pidField = document.getElementById(`pid-${id}`);
+  const statusField = document.getElementById(`status-${id}`);
+
+  if (btn.innerText === 'Start Configuration') {
+    log.innerText = 'Starting configuration...';
+    log.dataset.live = 'true';
+    const res = await fetch(`/app/workers/${id}/start`, { method: 'POST' });
+    const data = await res.json();
+    streamWorkerLog(id);
+    btn.innerText = 'Stop Worker';
+    pidField.innerText = data.pid || '-';
+    statusField.innerText = 'running';
+  } else {
+    log.innerText += '\nStopping worker...';
+    const res = await fetch(`/app/workers/${id}/stop`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      btn.innerText = 'Start Configuration';
+      log.innerText += '\n✅ Worker stopped.';
+      pidField.innerText = '-';
+      statusField.innerText = 'stopped';
+    } else {
+      log.innerText += `\n❌ Error: ${data.error || 'Could not stop worker'}`;
+    }
+  }
+}
+
+function toggleStoredConfig(id) {
+  const box = document.getElementById(`stored-${id}`);
+  const button = document.querySelector(`button[data-toggle="${id}"]`);
+  const isHidden = box.style.display === 'none' || box.style.display === '';
+  box.style.display = isHidden ? 'block' : 'none';
+  button.innerText = isHidden ? 'Hide Stored Config' : 'Show Stored Config';
+  localStorage.setItem(`storedconfig-visible-${id}`, isHidden ? 'true' : 'false');
+}
+
+function applyFilters() {
+  const ipFilter = document.getElementById('ip-filter').value.trim();
+  const statusFilter = document.getElementById('status-filter').value;
+  const tbody = document.getElementById('workers-body');
+  
+  // Create a fragment to build changes off-DOM
+  const fragment = document.createDocumentFragment();
+  const rowsToKeep = new Set();
+  
+  // Track which workers should be visible
+  const visibleWorkers = [];
+  
+  // First pass: Identify visible workers
+  for (const w of allWorkers) {
+    const discovered_ip = discoveredMap[w.discovered_id] || '';
+    const status = discoveredStatusMap[w.discovered_id] || '';
+    const matchesIP = !ipFilter || discovered_ip.includes(ipFilter);
+    const matchesStatus = !statusFilter || status === statusFilter;
+
+    if (matchesIP && matchesStatus) {
+      visibleWorkers.push(w);
+      rowsToKeep.add(w.id);
+    }
+  }
+
+  // Second pass: Update existing rows or create new ones
+  visibleWorkers.forEach(w => {
+    let tr = document.getElementById(`row-${w.id}`);
+    const isNewRow = !tr;
+    
+    if (isNewRow) {
+      tr = document.createElement('tr');
+      tr.id = `row-${w.id}`;
+
+      // Create cell structure
+      tr.innerHTML = `
+        <td>${w.id}</td>
+        <td>${w.discovered_id}</td>
+        <td>${discoveredMap[w.discovered_id] || ''}</td>
+        <td id="status-${w.id}">${discoveredStatusMap[w.discovered_id] || ''}</td>
+        <td id="pid-${w.id}">${w.pid ?? '-'}</td>
+        <td>
+          <button class="btn-toggle" data-toggle="${w.id}">${localStorage.getItem(`storedconfig-visible-${w.id}`) === 'true' ? 'Hide Stored Config' : 'Show Stored Config'}</button><br>
+          <pre class="storedconfig" id="stored-${w.id}" style="display:${localStorage.getItem(`storedconfig-visible-${w.id}`) === 'true' ? 'block' : 'none'};">${w.storedconfig || ''}</pre>
+        </td>
+        <td>
+          <button class="btn-start" id="toggle-${w.id}">${discoveredStatusMap[w.discovered_id] === 'running' ? 'Stop Worker' : 'Start Configuration'}</button><br><br>
+          <button class="btn-delete" data-delete="${w.id}">Delete</button>
+        </td>
+        <td>
+          ${w.log ? `<button class="btn-view-log" data-viewlog="${w.id}">View Last Log</button><br><br>` : ''}
+          <pre class="worker-log" id="log-${w.id}" data-live="false"></pre>
+        </td>
+      `;
+      
+      // Add new row to fragment
+      fragment.appendChild(tr);
+    }
+    
+    // Update existing row without recreating elements
+    if (!isNewRow) {
+      // Update status and button text
+      document.getElementById(`status-${w.id}`).textContent = discoveredStatusMap[w.discovered_id] || '';
+      document.getElementById(`toggle-${w.id}`).textContent = 
+        discoveredStatusMap[w.discovered_id] === 'running' ? 'Stop Worker' : 'Start Configuration';
+    }
+    
+    // Always update stored config visibility
+    const toggleBtn = tr.querySelector(`[data-toggle="${w.id}"]`);
+    if (toggleBtn) {
+      toggleBtn.textContent = localStorage.getItem(`storedconfig-visible-${w.id}`) === 'true' ? 
+        'Hide Stored Config' : 'Show Stored Config';
+      tr.querySelector(`#stored-${w.id}`).style.display = 
+        localStorage.getItem(`storedconfig-visible-${w.id}`) === 'true' ? 'block' : 'none';
+    }
+    
+    // Only initialize new logs or update non-live logs
+    const logEl = document.getElementById(`log-${w.id}`);
+    if (logEl && (isNewRow || logEl.dataset.live === 'false')) {
+      logEl.innerHTML = colorizeLog(w.log || '');
+    }
+    
+    // Add event listeners for new elements
+    if (isNewRow) {
+      tr.querySelector(`[data-toggle="${w.id}"]`).addEventListener('click', () => toggleStoredConfig(w.id));
+      tr.querySelector(`#toggle-${w.id}`).addEventListener('click', () => toggleWorker(w.id));
+      tr.querySelector(`[data-delete="${w.id}"]`).addEventListener('click', () => deleteWorker(w.id));
+      const viewBtn = tr.querySelector(`[data-viewlog="${w.id}"]`);
+      if (viewBtn) {
+        viewBtn.addEventListener('click', async () => {
+          const logEl = document.getElementById(`log-${w.id}`);
+          logEl.dataset.live = 'false';
+          const res = await fetch(`/app/worker/${w.id}/log`);
+          const data = await res.json();
+          logEl.innerHTML = colorizeLog(data.log || '');
+          logEl.scrollTop = logEl.scrollHeight;
+          viewBtn.style.display = 'none';
+        });
+      }
+    }
+    
+    // Start streaming if needed
+    if (discoveredStatusMap[w.discovered_id] === 'running' && logEl.dataset.live === 'false') {
+      streamWorkerLog(w.id);
+    }
+  });
+  
+  // Add new rows to DOM
+  tbody.appendChild(fragment);
+  
+  // Remove rows that shouldn't be visible
+  Array.from(tbody.children).forEach(row => {
+    if (!rowsToKeep.has(parseInt(row.id.replace('row-', '')))) {
+      // Close SSE connection before removing
+      const workerId = parseInt(row.id.replace('row-', ''));
+      if (activeSSEConnections[workerId]) {
+        activeSSEConnections[workerId].close();
+        delete activeSSEConnections[workerId];
+      }
+      row.remove();
+    }
+  });
+}
+
+async function refresh() {
+  const res = await fetch('/app/workers');
+  const { workers, credentials } = await res.json();
+
+  const discoveredRes = await fetch('/app/discovered');
+  const discoveredList = await discoveredRes.json();
+
+  allWorkers = workers;
+  credentialsList = credentials;
+  discoveredMap = Object.fromEntries(discoveredList.map(d => [d.id, d.ip]));
+  discoveredStatusMap = Object.fromEntries(discoveredList.map(d => [d.id, d.status]));
+
+  applyFilters();
+}
+
+async function deleteWorker(id) {
+  if (!confirm('Delete this worker?')) return;
+  await fetch(`/app/workers/${id}`, { method: 'DELETE' });
+  refresh();
+}
+
+document.getElementById('ip-filter').addEventListener('input', applyFilters);
+document.getElementById('status-filter').addEventListener('change', applyFilters);
+
+refresh();
+// setInterval(pollActiveWorkerLogs, 5000);
+
+// setInterval(refresh, 15000);
+</script>
+{% endblock %}

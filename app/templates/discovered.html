@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+{% block title %}Discovered{% endblock %}
+{% block content %}
+<h2>Discovered Devices</h2>
+
+
+<div style="margin: 12px 0;">
+  <label>Import CSV:</label>
+  <input type="file" id="csv-file" accept=".csv" onchange="handleCsvUpload(this)">
+  <button onclick="importCsv()">Upload</button>
+</div>
+
+
+<div style="margin-bottom: 12px;">
+  Filter by IP:
+  <input type="text" id="ip-filter" placeholder="e.g. 192.168.1.10" style="padding: 6px; width: 250px; margin-right: 16px;">
+  Filter by Status:
+  <select id="status-filter" style="padding: 6px; margin-right: 16px;">
+    <option value="">All</option>
+    <option value="discovered">Discovered</option>
+    <option value="claimed">Claimed</option>
+    <option value="running">Running</option>
+    <option value="finished">finished</option>
+    <option value="error">Error</option>
+    <option value="stopped">Stopped</option>
+  </select>
+  <button onclick="clearFilters()" style="padding: 6px;">Clear Filters</button>
+</div>
+
+<div class="table-responsive">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>IP</th>
+        <th>Template</th>
+        <th>HW-Type</th>
+        <th>Variables</th>
+        <th>Credential</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="disco-body"></tbody>
+  </table>
+</div>
+
+{% raw %}
+<script>
+let globalCredentials = [];
+let hwTypes = [];
+let existingWorkers = new Set();
+let expertOptions = [];
+let allDevices = [];
+let allTpls = [];
+let parsedCsvRows = [];
+
+function handleCsvUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.trim().split('\n');
+    parsedCsvRows = lines.map(l => {
+      const [ip, hwType, tplName] = l.split(',').map(s => s.trim());
+      return ip && hwType && tplName ? {ip, hwType, tplName} : null;
+    }).filter(r => r);
+    alert(`${parsedCsvRows.length} row(s) parsed from CSV.`);
+  };
+  reader.readAsText(file);
+}
+
+
+async function importCsv() {
+  if (!parsedCsvRows.length) return alert("No CSV rows to import.");
+  const tplMap = Object.fromEntries(allTpls.map(t => [t.name.toLowerCase(), t.id]));
+  const hwMap = Object.fromEntries(hwTypes.map(h => [h.name.toLowerCase(), h.name]));
+
+  let imported = 0, skipped = 0;
+  for (const row of parsedCsvRows) {
+    const tplId = tplMap[row.tplName.toLowerCase()];
+    const hwName = hwMap[row.hwType.toLowerCase()];
+    if (!tplId || !hwName) {
+      console.warn("Skipping row due to missing mapping:", row);
+      skipped++;
+      continue;
+    }
+    await fetch('/app/discovered', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        ip: row.ip,
+        name: '',
+        hw_type: hwName,
+        template_id: tplId,
+        variables: {},
+        status: 'discovered'
+      })
+    });
+    imported++;
+  }
+  alert(`Imported ${imported} row(s), skipped ${skipped}.`);
+  refresh();
+}
+
+
+
+async function refresh() {
+  await fetchCredentials();
+  await Promise.all([fetchHwTypes(), fetchWorkers()]);
+
+  const [items, tpls] = await Promise.all([
+    fetch('/app/discovered').then(r => r.json()),
+    fetch('/app/templates').then(r => r.json())
+  ]);
+
+  allDevices = items;
+  allTpls = tpls;
+  applyFilters();
+}
+
+function applyFilters() {
+  const ipFilter = document.getElementById('ip-filter').value.trim().toLowerCase();
+  const statusFilter = document.getElementById('status-filter').value;
+
+  const body = document.getElementById('disco-body');
+  body.innerHTML = '';
+
+  const tplMap = {};
+  allTpls.forEach(t => tplMap[t.id] = t);
+
+  for (const d of allDevices) {
+    const ipMatch = !ipFilter || (d.ip && d.ip.toLowerCase().includes(ipFilter));
+    const statusMatch = !statusFilter || d.status === statusFilter;
+
+    if (ipMatch && statusMatch) {
+      const tr = renderDeviceRow(d, tplMap, allTpls);
+      body.appendChild(tr);
+    }
+  }
+}
+
+function clearFilters() {
+  document.getElementById('ip-filter').value = '';
+  document.getElementById('status-filter').value = '';
+  applyFilters();
+}
+
+async function fetchCredentials() {
+  const res = await fetch('/app/settings');
+  globalCredentials = await res.json();
+  expertOptions = globalCredentials.filter(c => c.is_expert);
+}
+
+async function fetchHwTypes() {
+  const res = await fetch('/app/hwtypes');
+  hwTypes = await res.json();
+}
+
+async function fetchWorkers() {
+  const res = await fetch('/app/workers');
+  const data = await res.json();
+  existingWorkers = new Set(data.workers.map(w => w.discovered_id));
+}
+
+async function applyTemplate(id) {
+  const select = document.getElementById(`tpl-${id}`);
+  const button = select.nextElementSibling;
+  const selectedId = parseInt(select.value) || null;
+
+  button.disabled = true;
+  button.textContent = "Applying...";
+
+  const [items, tpls] = await Promise.all([
+    fetch('/app/discovered').then(r => r.json()),
+    fetch('/app/templates').then(r => r.json())
+  ]);
+
+  const tplMap = {};
+  tpls.forEach(t => tplMap[t.id] = t);
+
+  const d = items.find(x => x.id === id);
+  if (!d) return;
+
+  const tpl = tplMap[selectedId];
+  const rawVars = tpl ? [...tpl.content.matchAll(/{{\s*(\w+)\s*\|\s*default\(['"]?([^'")]+)['"]?\)\s*}}/g)] : [];
+  const currentVars = d.variables ? JSON.parse(d.variables) : {};
+
+  for (const [_, key, defVal] of rawVars) {
+    if (!(key in currentVars)) {
+      currentVars[key] = defVal;
+    }
+  }
+
+  if (tpl.content.includes('{{hostname') && !currentVars.hostname) {
+    currentVars.hostname = d.name || '';
+  }
+
+  await updateDiscovered(id, { template_id: selectedId, variables: currentVars });
+
+  button.textContent = "✔ Applied";
+  setTimeout(() => {
+    button.disabled = false;
+    button.textContent = "Apply";
+  }, 1000);
+}
+
+function renderDeviceRow(d, tplMap, tpls) {
+  const tpl = tplMap[d.template_id];
+  const varValues = d.variables ? JSON.parse(d.variables) : {};
+  const rawVars = tpl ? [...tpl.content.matchAll(/{{\s*(\w+)\s*\|\s*default\(['"]?([^'")]+)['"]?\)\s*}}/g)] : [];
+  const requiredVars = rawVars.map(match => ({ key: match[1], default: match[2] }));
+
+  if (tpl && tpl.content.includes('{{hostname')) {
+    if (!varValues['hostname']) varValues['hostname'] = d.name || '';
+    if (!requiredVars.some(v => v.key === 'hostname')) {
+      requiredVars.unshift({ key: 'hostname', default: '' });
+    }
+  }
+
+  const varsHtml = tpl ? `<table class="table">${requiredVars.map(({key, default: def}) => {
+    const val = varValues[key] || '';
+    return `<tr><td><strong>${key}</strong></td><td><input value="${val}" placeholder="${def || ''}" onchange="updateVar(${d.id}, '${key}', this.value)"></td></tr>`;
+  }).join('')}</table>` : '—';
+
+  const credOptions = globalCredentials.map(c =>
+    `<option value="${c.id}" ${d.setting_id == c.id ? 'selected' : ''}>${c.username}${c.is_default ? ' (default)' : ''}</option>`
+  ).join('');
+
+  const expertCredOptions = expertOptions.map(c =>
+    `<option value="${c.id}" ${d.expert_cred_id == c.id ? 'selected' : ''}>${c.username}</option>`
+  ).join('');
+
+  const hwOptions = hwTypes.map(hw =>
+    `<option value="${hw.name}" ${d.hw_type === hw.name ? 'selected' : ''}>${hw.name}</option>`
+  ).join('');
+
+  let createBtn = '';
+
+  if (existingWorkers.has(d.id)) {
+    createBtn = `<button class="btn-start" disabled title="Worker already exists">Worker Exists</button>`;
+  } else if (!d.hw_type || d.hw_type.trim() === '') {
+    createBtn = `<button class="btn-start" disabled title="Set and save HW-Type first">Set HW-Type</button>`;
+  } else {
+    createBtn = `<button class="btn-start" onclick="deploy(${d.id})">Create Worker</button>`;
+  }
+
+  const tr = document.createElement('tr');
+  tr.id = `row-${d.id}`;
+  tr.innerHTML = `
+    <td>${d.ip}</td>
+    <td>
+      <select id="tpl-${d.id}" class="form-inline"><option value="">--none--</option>${tpls.map(t => `<option value="${t.id}" ${d.template_id == t.id ? 'selected' : ''}>${t.name}</option>`).join('')}</select>
+      <button class="btn-start" onclick="applyTemplate(${d.id})">Apply</button>
+    </td>
+    <td>
+      <select id="hw-${d.id}"><option value="">-- select --</option>${hwOptions}</select><br>
+      <button class="btn-start" onclick="applyHwType(${d.id})">Apply HW-Type</button>
+    </td>
+    <td>${varsHtml}</td>
+    <td>
+      <label>Cred:</label>
+      <select class="cred-select" id="cred-${d.id}">
+        <option value="">-- select --</option>${credOptions}
+      </select><br><br>
+      <label>Expert:</label>
+      <select class="cred-select" id="expert-cred-${d.id}">
+        <option value="">-- select --</option>${expertCredOptions}
+      </select>
+    </td>
+    <td>${d.status || '--'}</td>
+    <td style="text-align: center;">
+      <button class="btn-start" onclick="saveVars(${d.id})">Apply Variables</button><br><br>
+      ${createBtn}<br><br>
+      <button class="btn-delete" onclick="deleteDiscovered(${d.id})">Delete</button><br><br>
+      <button class="btn-test" onclick="testRender(${d.id})">Test Render</button>
+    </td>
+  `;
+  return tr;
+}
+
+async function applyHwType(id) {
+  const hw_type = document.getElementById(`hw-${id}`).value || null;
+  if (!hw_type) {
+    alert("Please select a HW-Type before applying.");
+    return;
+  }
+  await updateDiscovered(id, { hw_type });
+}
+
+async function saveVars(id) {
+  const tr = document.getElementById(`row-${id}`);
+  const inputs = tr.querySelectorAll("td input");
+  const name = inputs[0].value;
+  const variables = {};
+  [...inputs].slice(1).forEach(input => {
+    const key = input.closest('tr').querySelector('td strong').textContent.trim();
+    variables[key] = input.value;
+  });
+
+  const hw_type = document.getElementById(`hw-${id}`).value || null;
+  const setting_id = document.getElementById(`cred-${id}`).value || null;
+  const expert_cred_id = document.getElementById(`expert-cred-${id}`).value || null;
+
+  await updateDiscovered(id, { name, variables, hw_type, setting_id, expert_cred_id });
+}
+
+async function updateDiscovered(id, changes) {
+  const current = await fetch('/app/discovered').then(r => r.json()).then(list => list.find(x => x.id === id));
+  const payload = { id, variables: {}, ...changes };
+  const mergedVars = current.variables ? JSON.parse(current.variables) : {};
+  Object.assign(mergedVars, changes.variables || {});
+  payload.variables = mergedVars;
+  if (typeof payload.template_id === 'undefined') payload.template_id = current.template_id;
+  if (typeof payload.name === 'undefined') payload.name = current.name;
+  await fetch('/app/discovered', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  refresh();
+}
+
+function updateVar(id, key, value) {
+  updateDiscovered(id, { variables: { [key]: value } });
+}
+
+function deploy(id) {
+  const settingId = document.getElementById(`cred-${id}`).value || null;
+  fetch(`/app/deploy/${id}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ setting_id: settingId })
+  })
+    .then(r => r.json())
+    .then(refresh);
+}
+
+async function deleteDiscovered(id) {
+  if (!confirm('Really delete this discovered device?')) return;
+  await fetch(`/app/discovered/${id}`, { method: 'DELETE' });
+  refresh();
+}
+
+async function testRender(id) {
+  const res = await fetch(`/app/render/${id}`);
+  const data = await res.json();
+  const win = window.open('', '_blank');
+  win.document.write(`<pre>${data.rendered || data.error}</pre>`);
+}
+
+document.getElementById('ip-filter').addEventListener('input', applyFilters);
+document.getElementById('status-filter').addEventListener('change', applyFilters);
+
+refresh();
+</script>
+{% endraw %}
+{% endblock %}

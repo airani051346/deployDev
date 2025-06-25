@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+
+<h2>Credentials</h2>
+<table class="table">
+  <thead>
+    <tr>
+      <th>Username</th>
+      <th>Password</th>
+      <th>Default</th>
+      <th>Expert</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody id="settings-body">
+    {% for user in users %}
+    <tr data-id="{{ user.id }}">
+      <td>{{ user.username }}</td>
+      <td>
+        <input type="password" class="pw-input" value="{{ user.password }}">
+      </td>
+      <td style="text-align: center;">
+        <input type="radio" name="default_cred" class="default-radio"
+               {% if user.is_default %}checked{% endif %}
+               onchange="setDefault({{ user.id }})">
+      </td>
+      <td style="text-align: center;">
+        <input type="checkbox" class="expert-checkbox" {% if user.is_expert %}checked{% endif %}
+               onchange="setExpert({{ user.id }}, this.checked)">
+      </td>
+      <td>
+        <button class="btn-start" onclick="applyChanges({{ user.id }})">Apply</button>
+        <button class="btn-delete" onclick="deleteSetting({{ user.id }})">Delete</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>Add New Credential</h3>
+<form onsubmit="addCredential(event)">
+  <input type="text" placeholder="Username" id="user" required>
+  <input type="password" placeholder="Password" id="password" required>
+  <label><input type="checkbox" id="is_expert"> Expert Credential</label>
+  <button type="submit" class="btn-start">Add</button>
+</form>
+
+<script>
+function addCredential(event) {
+  event.preventDefault();
+  const username = document.getElementById("user").value;
+  const password = document.getElementById("password").value;
+  const is_expert = document.getElementById("is_expert").checked ? 1 : 0;
+
+  fetch('/app/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user: username, password, is_expert })
+  }).then(() => location.reload());
+}
+
+function deleteSetting(id) {
+  if (!confirm('Really delete this credential?')) return;
+  fetch(`/app/settings/${id}`, { method: 'DELETE' })
+    .then(() => location.reload());
+}
+
+function applyChanges(id) {
+  const row = document.querySelector(`tr[data-id="${id}"]`);
+  const newPassword = row.querySelector('.pw-input').value;
+
+  fetch(`/app/settings/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: newPassword })
+  }).then(() => alert('Password updated.'));
+}
+
+function setDefault(id) {
+  fetch(`/app/settings/${id}/default`, {method: 'POST'})
+    .then(() => {
+      document.querySelectorAll('.default-radio').forEach(r => r.checked = false);
+      document.querySelector(`tr[data-id="${id}"] .default-radio`).checked = true;
+  });
+}
+
+function setExpert(id, value) {
+  fetch(`/app/settings/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ is_expert: value ? 1 : 0 })
+  });
+}
+</script>
+
+{% endblock %}
