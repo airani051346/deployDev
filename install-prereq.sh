@@ -1,31 +1,28 @@
 #!/bin/bash
-
 set -e
 
-echo "🔧 udpade available apt package..."
+echo "🔧 Updating and upgrading packages..."
 sudo apt update
 sudo DEBIAN_FRONTEND=noninteractive apt upgrade -yq
 
-echo "🔧 Installing dependencies..."
-sudo DEBIAN_FRONTEND=noninteractive apt install -yq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
-    python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git 
+echo "🔧 Installing system dependencies..."
+sudo apt install -yq python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git
 
+# Environment setup
 export APP_DIR="/opt/network_manager"
-export REPO_URL="https://github.com/airani051346/deployDev.git"  # Replace with your actual repo
+export REPO_URL="https://github.com/airani051346/deployDev.git"
 export APP_USER="www-data"
 
 echo "📁 Creating application directory..."
 sudo mkdir -p "$APP_DIR"
+sudo chown "$USER:$USER" "$APP_DIR"
 
 echo "📥 Cloning GitHub repository..."
-sudo git clone "$REPO_URL" "$APP_DIR"
+git clone "$REPO_URL" "$APP_DIR"
 
-echo "🐍 Setting up virtual environment..."
+echo "🐍 Creating virtual environment and installing Python packages..."
 cd "$APP_DIR/app"
-
-sudo chown -R $USER:$USER "$APP_DIR"
-
-sudo python3 -m venv venv
+python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install flask gunicorn paramiko requests
@@ -116,23 +113,22 @@ CREATE UNIQUE INDEX idx_unique_default_setting ON settings(is_default) WHERE is_
 COMMIT;
 EOF
 
-sqlite3 zero_touch.db < init_db.sql
-rm init_db.sql
+# sqlite3 zero_touch.db < init_db.sql
 
-echo "🔐 Setting file permissions..."
-sudo chown www-data:www-data "$APP_DIR/app/zero_touch.db"
+echo "🔐 Fixing permissions..."
+sudo chown "$APP_USER:$APP_USER" "$APP_DIR/app/zero_touch.db"
 sudo chmod 660 "$APP_DIR/app/zero_touch.db"
-sudo chown -R www-data:www-data "$APP_DIR/app"
+sudo chown -R "$APP_USER:$APP_USER" "$APP_DIR/app"
 sudo chmod -R 770 "$APP_DIR/app"
 
-echo "🛠️ Creating systemd service file..."
+echo "🛠️ Creating systemd service..."
 sudo tee /etc/systemd/system/zero_touch-api.service > /dev/null <<EOF
 [Unit]
 Description=Zero Touch Flask API
 After=network.target
 
 [Service]
-User=www-data
+User=$APP_USER
 WorkingDirectory=$APP_DIR/app
 Environment="PATH=$APP_DIR/app/venv/bin"
 ExecStart=$APP_DIR/app/venv/bin/gunicorn -w 4 -b 127.0.0.1:5000 app:app
@@ -154,7 +150,7 @@ sudo openssl req -x509 -nodes -days 365 \
   -out "$APP_DIR/app/certs/zero_touch.crt" \
   -subj "/C=DE/ST=CP/L=emeateam/O=checkpoint/CN=zero-touch.local"
 
-echo "🌐 Configuring Nginx..."
+echo "🌐 Configuring Nginx as reverse proxy..."
 sudo tee /etc/nginx/sites-available/zero_touch > /dev/null <<EOF
 server {
     listen 443 ssl http2;
@@ -176,9 +172,7 @@ EOF
 
 sudo ln -sf /etc/nginx/sites-available/zero_touch /etc/nginx/sites-enabled/
 sudo nginx -t
-sudo chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 sudo systemctl restart nginx
 
-
-echo "✅ Zero Touch App successfully installed at $APP_DIR"
-echo "🔍 To view logs: sudo journalctl -u zero_touch-api -f"
+echo "✅ Zero Touch App successfully deployed at https://<your-server-ip>/"
+echo "📋 View logs: sudo journalctl -u zero_touch-api -f"
