@@ -7,10 +7,12 @@ sudo apt update
 sudo DEBIAN_FRONTEND=noninteractive apt upgrade -yq
 
 echo "🔧 Installing dependencies..."
-sudo apt install -y python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git
+sudo DEBIAN_FRONTEND=noninteractive apt install -yq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+    python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git
 
-APP_DIR="/opt/network_manager"
-REPO_URL="https://github.com/airani051346/deployDev.git"  # Replace with your actual repo
+export APP_DIR="/opt/network_manager"
+export REPO_URL="https://github.com/airani051346/deployDev.git"  # Replace with your actual repo
+export APP_USER="www-data"
 
 echo "📁 Creating application directory..."
 sudo mkdir -p "$APP_DIR"
