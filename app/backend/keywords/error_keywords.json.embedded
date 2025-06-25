@@ -1,0 +1,13 @@
+[
+    "invalid",
+    "error",
+    "failed",
+    "permission\\s*denied",
+    "command\\s*not\\s*found",
+    "not\\s*recognized",
+    "cannot",
+    "denied",
+    "unexpected",
+    "syntax\\s*error",
+    "Bad\\s*parameter"
+]
