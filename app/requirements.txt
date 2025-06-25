@@ -1,0 +1,8 @@
+Flask
+gunicorn
+Jinja2
+paramiko
+pycparser
+python-nmap
+requests
+urllib3
