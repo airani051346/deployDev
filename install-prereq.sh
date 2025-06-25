@@ -20,14 +20,12 @@ sudo mkdir -p "$APP_DIR"
 echo "📥 Cloning GitHub repository..."
 sudo git clone "$REPO_URL" "$APP_DIR"
 
-sudo chown "$APP_USER:$APP_USER" "$APP_DIR"
-
 echo "🐍 Setting up virtual environment..."
 cd "$APP_DIR/app"
-python3 -m venv venv
+sudo python3 -m venv venv
 source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt || pip install gunicorn flask paramiko requests
+sudo pip install --upgrade pip
+sudo pip install -r requirements.txt || pip install gunicorn flask paramiko requests
 
 echo "📦 Initializing SQLite database..."
 cat > init_db.sql <<EOF
@@ -175,7 +173,9 @@ EOF
 
 sudo ln -sf /etc/nginx/sites-available/zero_touch /etc/nginx/sites-enabled/
 sudo nginx -t
+sudo chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 sudo systemctl restart nginx
+
 
 echo "✅ Zero Touch App successfully installed at $APP_DIR"
 echo "🔍 To view logs: sudo journalctl -u zero_touch-api -f"
