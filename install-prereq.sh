@@ -16,10 +16,11 @@ export APP_USER="www-data"
 
 echo "📁 Creating application directory..."
 sudo mkdir -p "$APP_DIR"
-sudo chown "$APP_USER:$APP_USER" "$APP_DIR"
 
 echo "📥 Cloning GitHub repository..."
-sudo git clone "$REPO_URL" "$APP_DIR/app"
+sudo git clone "$REPO_URL" "$APP_DIR"
+
+sudo chown "$APP_USER:$APP_USER" "$APP_DIR"
 
 echo "🐍 Setting up virtual environment..."
 cd "$APP_DIR/app"
