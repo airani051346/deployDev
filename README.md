@@ -1,18 +1,18 @@
 # deployDev
 
 # requiemets: 
-- dedicated Ubuntu Linux host
-unattended installation
-    curl -sSL https://raw.githubusercontent.com/airani051346/deployDev/refs/heads/main/install-script.sh | bash
-    appication default folder: /opt/network_manager
-    appication default user: www-data
-    application default port: 443. port 80 is redirected automatically
+- dedicated Ubuntu Linux host<br>
+unattended installation<br>
+    curl -sSL https://raw.githubusercontent.com/airani051346/deployDev/refs/heads/main/install-script.sh | bash<br>
+    appication default folder: /opt/network_manager<br>
+    appication default user: www-data<br>
+    application default port: 443. port 80 is redirected automatically<br>
       
 this shell scripts installs all necessary modules and configures necessary permissions. <br>
 for the first try self signed certificates are generated <br>
 
 
-in case you dont have a dedicated host you can open the raw view of the shell script and do the steps one by one.
+in case you dont have a dedicated host you can open the raw view of the shell script and do the steps one by one.<br>
 
  
 # documentation:
