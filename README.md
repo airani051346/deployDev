@@ -1,2 +1,2 @@
 # deployDev
-curl -sSL https://github.com/airani051346/deployDev/main/install-script.sh | bash
+curl -sSL https://raw.githubusercontent.com/airani051346/deployDev/refs/heads/main/install-script.sh | bash
