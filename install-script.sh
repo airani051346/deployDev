@@ -6,7 +6,7 @@ sudo apt update
 sudo DEBIAN_FRONTEND=noninteractive apt upgrade -yq
 
 echo "🔧 Installing system dependencies..."
-sudo apt install -yq python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git
+sudo DEBIAN_FRONTEND=noninteractive apt install -yq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git
 
 # Environment setup
 export APP_DIR="/opt/network_manager"
