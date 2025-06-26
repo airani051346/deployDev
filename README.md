@@ -128,8 +128,27 @@ ________________________________________
 ├────js              # java script<br> 
 ├──zero_touch.db     # SQLite database<br>
 ```
+# error keyword file structure
+filename is pointing also to hw-type eg: 
+   <h3>error_keywords.json.embedded</h3> <br>
+is used for hw-type embedded
+```Json
+[
+    "invalid",
+    "error",
+    "failed",
+    "permission\\s*denied",
+    "command\\s*not\\s*found",
+    "not\\s*recognized",
+    "cannot",
+    "denied",
+    "unexpected",
+    "syntax\\s*error",
+    "Bad\\s*parameter"
+]
+```
 ________________________________________
- # JSON APIs
+ # REST APIs
 Template Management<br>
    GET  /app/templates<br>
    POST /app/templates {name, content}<br>
@@ -157,19 +176,19 @@ ____________________________________
 # Configuration Files
 error_keywords.json.<HW type><br>
 ```Json
-[<br>
-  "invalid",<br>
-  "error",<br>
-  "failed",<br>
-  "permission\\s*denied",<br>
-  "command\\s*not\\s*found",<br>
-  "not\\s*recognized",<br>
-  "cannot",<br>
-  "denied",<br>
-  "unexpected",<br>
-  "syntax\\s*error",<br>
-  "Bad\\s*parameter"<br>
-]<br>
+[
+  "invalid",
+  "error",
+  "failed",
+  "permission\\s*denied",
+  "command\\s*not\\s*found",
+  "not\\s*recognized",
+  "cannot",
+  "denied",
+  "unexpected",
+  "syntax\\s*error",
+  "Bad\\s*parameter"
+]
 ```
 # CSV Import Format
 ```csv
