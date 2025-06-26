@@ -56,6 +56,7 @@ sudo openssl req -x509 -nodes -days 365 \
   -subj "/C=DE/ST=CP/L=emeateam/O=checkpoint/CN=zero-touch.local"
 
 echo "🌐 Configuring Nginx as reverse proxy..."
+
 sudo tee /etc/nginx/sites-available/zero_touch > /dev/null <<EOF
 server {
     listen 443 ssl;
@@ -75,8 +76,22 @@ server {
     }
 }
 EOF
+echo "🌐 Adding HTTP to HTTPS redirect..."
+sudo tee /etc/nginx/sites-available/zero_touch_http_redirect > /dev/null <<EOF
+server {
+    listen 80 default_server;
+    server_name _;
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+EOF
+
 
 sudo ln -sf /etc/nginx/sites-available/zero_touch /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/zero_touch_http_redirect /etc/nginx/sites-enabled/
+
 sudo nginx -t
 sudo systemctl restart nginx
 
