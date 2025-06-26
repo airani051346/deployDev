@@ -76,17 +76,17 @@ you can either use a csv file to import devices with following structure:<br>
 Where the first entry is the ip, second Hardware-type and third used template.<br>
 Or use an API call which is more enhanced.<br>
 ```API
-http://<your-server>:5000/app/discovered<br>
-{<br>
-   "ip": "192.168.1.123",<br>
-   "name": "lab-device-1",<br>
-   "template_id": 3,<br>
-   "hw_type": "Fortinet",<br>
-   "variables": {<br>
-     "hostname": "fw01"<br>
-   },<br>
-   "status": "discovered"<br>
-}<br>
+URL: http://<your-server>:5000/app/discovered
+{
+   "ip": "192.168.1.123",
+   "name": "lab-device-1",
+   "template_id": 3,
+   "hw_type": "Fortinet",
+   "variables": {
+     "hostname": "fw01"
+   },
+   "status": "discovered"
+}
 ```
  
  # Step 4: Apply Variables
@@ -117,21 +117,22 @@ http://<your-server>:5000/app/discovered<br>
 ________________________________________
  # Directory Structure
 ```treeview
-/opt/network_manager/<br>
-├── app/             # Flask app<br>
-├──── tmp/           # Temporary workspace<br>
-├────backend/        # here is the model<br>
-├──────keywords      # Stop-word lists per hardware type <br>
-├──certs             # web front ssl certificates<br>
-├──templates         # web front <br>
-├────css             # styles <br>
-├────js              # java script<br> 
-├──zero_touch.db     # SQLite database<br>
+/opt/network_manager/
+├── app/             # Flask app
+├──── tmp/           # Temporary workspace
+├────backend/        # here is the model
+├──────keywords      # Stop-word lists per hardware type 
+├──certs             # web front ssl certificates
+├──templates         # web front 
+├────css             # styles 
+├────js              # java script
+├──zero_touch.db     # SQLite database
 ```
 # error keyword file structure
 filename is pointing also to hw-type eg: 
    <h3>error_keywords.json.embedded</h3> <br>
 is used for hw-type embedded
+space in regex notation
 ```Json
 [
     "invalid",
@@ -149,29 +150,30 @@ is used for hw-type embedded
 ```
 ________________________________________
  # REST APIs
-Template Management<br>
-   GET  /app/templates<br>
-   POST /app/templates {name, content}<br>
-   PUT  /app/templates/<id><br>
-   DELETE /app/templates/<id><br>
-<br>
-Network Scanning<br>
-   GET  /app/networks<br>
-   POST /app/networks {cidr, interval}<br>
-   POST /app/scan/<id>/start<br>
-   POST /app/scan/<id>/stop<br>
-   Device Discovery<br>
-   GET  /app/discovered<br>
-   POST /app/discovered {ip, name, template_id, hw_type, variables, status}<br>
-   DELETE /app/discovered/<id><br>
-<br>
-Worker Handling<br>
-   POST /app/deploy/<discovered_id><br>
-   POST /app/workers/<id>/start<br>
-   POST /app/workers/<id>/stop<br>
-   GET  /app/worker/<id>/stream<br>
-   GET  /app/workers/<id>/log<br>
-<br>
+```
+Template Management
+   GET  /app/templates
+   POST /app/templates {name, content}
+   PUT  /app/templates/<id>
+   DELETE /app/templates/<id>
+
+Network Scanning
+   GET  /app/networks
+   POST /app/networks {cidr, interval}
+   POST /app/scan/<id>/start
+   POST /app/scan/<id>/stop
+   Device Discovery
+   GET  /app/discovered
+   POST /app/discovered {ip, name, template_id, hw_type, variables, status}
+   DELETE /app/discovered/<id>
+
+Worker Handling
+   POST /app/deploy/<discovered_id>
+   POST /app/workers/<id>/start
+   POST /app/workers/<id>/stop
+   GET  /app/worker/<id>/stream
+   GET  /app/workers/<id>/log
+
 ____________________________________
 # Configuration Files
 error_keywords.json.<HW type><br>
@@ -192,8 +194,8 @@ error_keywords.json.<HW type><br>
 ```
 # CSV Import Format
 ```csv
-192.168.1.10,embedded,Spark-PTK<br>
-192.168.1.20,full,Spark-SD-WAN<br>
+192.168.1.10,embedded,Spark-PTK
+192.168.1.20,full,Spark-SD-WAN
 ```
 ________________________________________
  # Known Limitations
