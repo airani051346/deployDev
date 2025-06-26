@@ -82,7 +82,7 @@ server {
 }
 EOF
 
-
+sudo rm -f /etc/nginx/sites-enabled/default
 sudo ln -sf /etc/nginx/sites-available/zero_touch /etc/nginx/sites-enabled/
 sudo ln -sf /etc/nginx/sites-available/zero_touch_http_redirect /etc/nginx/sites-enabled/
 
