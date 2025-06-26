@@ -24,7 +24,6 @@ echo "🐍 Creating virtual environment and installing Python packages..."
 cd "$APP_DIR/app"
 python3 -m venv venv
 source venv/bin/activate
-pip install --upgrade pip
 pip install flask gunicorn paramiko requests
 
 echo "📦 Initializing SQLite database..."
