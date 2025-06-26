@@ -5,9 +5,6 @@ echo "🔧 Updating and upgrading packages..."
 sudo apt update
 sudo DEBIAN_FRONTEND=noninteractive apt upgrade -yq
 
-echo "🔧 Installing system dependencies..."
-sudo DEBIAN_FRONTEND=noninteractive apt install -yq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git nmap
-
 export REPO_URL="https://github.com/airani051346/deployDev.git"
 
 # Environment setup
@@ -17,6 +14,9 @@ export APP_DIR="${input_app_dir:-/opt/network_manager}"
 # Ask for APP_USER
 read -p "Enter application user default: [www-data]: " input_app_user
 export APP_USER="${input_app_user:-www-data}"
+
+echo "🔧 Installing system dependencies..."
+sudo DEBIAN_FRONTEND=noninteractive apt install -yq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git nmap
 
 echo "📁 Creating application directory..."
 sudo mkdir -p "$APP_DIR"
