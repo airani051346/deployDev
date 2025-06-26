@@ -46,15 +46,15 @@ ________________________________________
  # Template example: 
  ```bash
 set hostname {{hostname}}<br>
-set interface name WAN ipv4-address {{WAN_IPv4 | default('192.168.178.0')}} subnetmask {{WAN_SUBNET | default('255.255.255.0')}} default gateway {{default_gw | default('192.168.178.1')}}<br>
-set interface name LAN1 ipv4-address {{LAN1_IPv4 | default('192.168.178.0')}} subnetmask {{LAN1_SUBNET | default('255.255.255.0')}} <br>
-set interface name LAN2 ipv4-address {{LAN2_IPv4 | default('192.168.178.0')}} subnetmask {{LAN2_SUBNET | default('255.255.255.0')}} <br>
-<br>
-enter_expert_mode:<br>
-ls -al<br>
-exit_expert_mode:<br>
-show diag<br>
-show interfaces table<br>
+set interface name WAN ipv4-address {{WAN_IPv4 | default('192.168.178.0')}} subnetmask {{WAN_SUBNET | default('255.255.255.0')}} default gateway {{default_gw | default('192.168.178.1')}}
+set interface name LAN1 ipv4-address {{LAN1_IPv4 | default('192.168.178.0')}} subnetmask {{LAN1_SUBNET | default('255.255.255.0')}} 
+set interface name LAN2 ipv4-address {{LAN2_IPv4 | default('192.168.178.0')}} subnetmask {{LAN2_SUBNET | default('255.255.255.0')}} 
+
+enter_expert_mode:
+ls -al
+exit_expert_mode:
+show diag
+show interfaces table
 ```
  # Step 2: Add Networks to Scan
  
