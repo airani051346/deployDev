@@ -4,9 +4,11 @@
 - dedicated Ubuntu Linux host<br>
 unattended installation<br>
     curl -sSL https://raw.githubusercontent.com/airani051346/deployDev/refs/heads/main/install-script.sh | bash<br>
-    appication default folder: /opt/network_manager<br>
-    appication default user: www-data<br>
-    application default port: 443. port 80 is redirected automatically<br>
+
+defaults in the scipt: <br>
+folder: /opt/network_manager<br>
+user: www-data<br>
+port: 443. port 80 is redirected automatically<br>
       
 this shell scripts installs all necessary modules and configures necessary permissions. <br>
 for the first try self signed certificates are generated <br>
