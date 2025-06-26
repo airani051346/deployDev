@@ -11,7 +11,11 @@
       <option value="2001:db8::/64">
       <option value="2001:db8::1-2001:db8::10">
     </datalist>
-    <input type="number" name="interval" placeholder="Interval (sec)" min="1" required>
+    <div class="tooltip-container">
+      <input type="number" name="interval" value="20" min="1" required readonly
+            style="background-color: #eee; cursor: not-allowed;">
+      <span class="tooltip-text">Not in Use</span>
+    </div>
     <button type="submit" class="btn-primary">➕ Add Network</button>
   </form>
   <br>
@@ -95,6 +99,11 @@
         startBtn.onclick = async () => {
           if (!confirm(`Start scan for ${n.cidr}?`)) return;
           const res = await fetch(`/app/scan/${n.id}/start`, { method: 'POST' });
+          /* const res = await fetch(`/app/scan/${n.id}/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ interval: n.interval })
+          }); */
           const json = await res.json();
           if (!res.ok) alert(`❗ ${json.error}`);
           refresh();
