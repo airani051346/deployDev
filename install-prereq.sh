@@ -24,7 +24,7 @@ echo "🐍 Creating virtual environment and installing Python packages..."
 cd "$APP_DIR/app"
 python3 -m venv venv
 source venv/bin/activate
-pip install flask gunicorn paramiko requests
+pip install flask gunicorn paramiko requests python-nmap
 
 # sqlite3 zero_touch.db < init_db.sql
 
