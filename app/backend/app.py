@@ -227,16 +227,66 @@ def ssh_execute_lines(ip, user, password, lines, stop_keywords=None, timeout=120
         shell.settimeout(2)
         wait_for_prompt(shell)
 
+        # Load expert credentials if available
+        expert_user, expert_pass = user, password
+        if worker_id:
+            conn = db()
+            c = conn.cursor()
+            cred = c.execute("""
+                SELECT COALESCE(e.username, def.username) AS expert_user,
+                       COALESCE(e.password, def.password) AS expert_pass
+                FROM workers w
+                JOIN discovered d ON w.discovered_id = d.id
+                LEFT JOIN settings e ON d.expert_cred_id = e.id
+                LEFT JOIN settings def ON def.is_default = 1
+                WHERE w.id = ?
+            """, (worker_id,)).fetchone()
+            if cred:
+                expert_user = cred['expert_user'] or user
+                expert_pass = cred['expert_pass'] or password
+            conn.close()
+
+        expert_mode = False  # track current shell mode
+
         for i, line in enumerate(lines):
             if cancel_flags.get(worker_id, threading.Event()).is_set():
                 output_log.append("🛑 Execution cancelled by user.\n")
                 success = False
                 break
 
-            shell.send(line.strip() + '\n')
+            stripped = line.strip()
+
+            # Special command: enter expert mode
+            if stripped == "enter_expert_mode":
+                shell.send("expert\n")
+                output = wait_for_prompt(shell, timeout=10, grace_period=2)
+                output_log.append(f"> expert\n{output}\n")
+
+                if "password" in output.lower():
+                    shell.send(expert_pass + "\n")
+                    output = wait_for_prompt(shell, timeout=10, grace_period=2)
+                    output_log.append(f"> (expert password)\n{output}\n")
+
+                if "#" not in output:
+                    output_log.append("🛑 Failed to enter expert mode.\n")
+                    success = False
+                    break
+
+                expert_mode = True
+                continue
+
+            # Special command: exit expert mode
+            if stripped == "exit_expert_mode":
+                shell.send("exit\n")
+                output = wait_for_prompt(shell, timeout=10, grace_period=2)
+                output_log.append(f"> exit\n{output}\n")
+                expert_mode = False
+                continue
+
+            shell.send(stripped + '\n')
             time.sleep(0.5)
             output = wait_for_prompt(shell, timeout=10, grace_period=2)
-            combined = f"> {line.strip()}\n{output}\n"
+            combined = f"> {stripped}\n{output}\n"
             output_log.append(combined)
 
             matched = next((pattern for pattern in stop_keywords if re.search(pattern, output, re.IGNORECASE)), None)
@@ -245,7 +295,7 @@ def ssh_execute_lines(ip, user, password, lines, stop_keywords=None, timeout=120
                 readable_keyword = simplify_regex(matched)
                 output_log.append(f"🛑 Detected error keyword: '{readable_keyword}' — Aborting at line {i + 1}.\n")
                 success = False
-                
+
                 if worker_id:
                     try:
                         conn = db()
@@ -266,6 +316,7 @@ def ssh_execute_lines(ip, user, password, lines, stop_keywords=None, timeout=120
         success = False
 
     return success, failed_line_index, ''.join(output_log)
+
 
 def run_worker_lines(id, storedconfig):
     conn = db()
