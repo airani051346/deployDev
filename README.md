@@ -75,6 +75,7 @@ you can either use a csv file to import devices with following structure:<br>
 192.168.1.20,full,Spark-SD-WAN<br>
 Where the first entry is the ip, second Hardware-type and third used template.<br>
 Or use an API call which is more enhanced.<br>
+```API
 •	http://<your-server>:5000/app/discovered<br>
 {<br>
    "ip": "192.168.1.123",<br>
@@ -86,7 +87,7 @@ Or use an API call which is more enhanced.<br>
    },<br>
    "status": "discovered"<br>
 }<br>
-
+```
  
  # Step 4: Apply Variables
 •	Each template may require variables (e.g. hostname, interface_ip)<br>
