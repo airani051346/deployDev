@@ -26,11 +26,6 @@ python3 -m venv venv
 source venv/bin/activate
 pip install flask gunicorn paramiko requests
 
-echo "📦 Initializing SQLite database..."
-cat > init_db.sql <<EOF
-
-EOF
-
 # sqlite3 zero_touch.db < init_db.sql
 
 echo "🔐 Fixing permissions..."
