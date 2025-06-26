@@ -6,14 +6,8 @@ sudo apt update
 sudo DEBIAN_FRONTEND=noninteractive apt upgrade -yq
 
 export REPO_URL="https://github.com/airani051346/deployDev.git"
-
-# Environment setup
-read -p "Enter application directory default: [/opt/network_manager]: " input_app_dir
-export APP_DIR="${input_app_dir:-/opt/network_manager}"
-
-# Ask for APP_USER
-read -p "Enter application user default: [www-data]: " input_app_user
-export APP_USER="${input_app_user:-www-data}"
+export APP_DIR="/opt/network_manager"
+export APP_USER="www-data"
 
 echo "🔧 Installing system dependencies..."
 sudo DEBIAN_FRONTEND=noninteractive apt install -yq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git nmap
