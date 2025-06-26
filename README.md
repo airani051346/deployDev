@@ -5,7 +5,7 @@
 unattended installation<br>
     curl -sSL https://raw.githubusercontent.com/airani051346/deployDev/refs/heads/main/install-script.sh | bash<br>
 
-defaults in the scipt: <br>
+defaults in the script: <br>
 folder: /opt/network_manager<br>
 user: www-data<br>
 port: 443. port 80 is redirected automatically<br>
