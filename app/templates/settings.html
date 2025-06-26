@@ -27,11 +27,11 @@
       </td>
       <td style="text-align: center;">
         <input type="checkbox" class="expert-checkbox" {% if user.is_expert %}checked{% endif %}
-               onchange="setExpert({{ user.id }}, this.checked)">
+               onchange="setExpert({{user.id}}, this.checked)">
       </td>
       <td>
-        <button class="btn-start" onclick="applyChanges({{ user.id }})">Apply</button>
-        <button class="btn-delete" onclick="deleteSetting({{ user.id }})">Delete</button>
+        <button class="btn-start" onclick="applyChanges({{user.id}})">Apply</button>
+        <button class="btn-delete" onclick="deleteSetting({{user.id}})">Delete</button>
       </td>
     </tr>
     {% endfor %}
