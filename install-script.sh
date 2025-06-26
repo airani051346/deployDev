@@ -6,7 +6,7 @@ sudo apt update
 sudo DEBIAN_FRONTEND=noninteractive apt upgrade -yq
 
 echo "🔧 Installing system dependencies..."
-sudo DEBIAN_FRONTEND=noninteractive apt install -yq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git
+sudo DEBIAN_FRONTEND=noninteractive apt install -yq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" python3-pip sqlite3 nginx apache2-utils python3-venv expect sshpass openssl git nmap
 
 # Environment setup
 export APP_DIR="/opt/network_manager"
@@ -25,6 +25,8 @@ cd "$APP_DIR/app"
 python3 -m venv venv
 source venv/bin/activate
 pip install flask gunicorn paramiko requests python-nmap
+
+ln -s /usr/bin/nmap "$APPP_DIR/app/venv/bin/nmap"
 
 # sqlite3 zero_touch.db < init_db.sql
 
