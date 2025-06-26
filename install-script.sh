@@ -31,7 +31,7 @@ python3 -m venv venv
 source venv/bin/activate
 pip install flask gunicorn paramiko requests python-nmap
 
-sudo ln -s /usr/bin/nmap "$APPP_DIR/app/venv/bin/nmap"
+sudo ln -s /usr/bin/nmap "$APP_DIR/app/venv/bin/nmap"
 
 # sqlite3 zero_touch.db < init_db.sql
 
