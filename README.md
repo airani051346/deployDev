@@ -76,7 +76,7 @@ you can either use a csv file to import devices with following structure:<br>
 Where the first entry is the ip, second Hardware-type and third used template.<br>
 Or use an API call which is more enhanced.<br>
 ```API
-•	http://<your-server>:5000/app/discovered<br>
+http://<your-server>:5000/app/discovered<br>
 {<br>
    "ip": "192.168.1.123",<br>
    "name": "lab-device-1",<br>
@@ -116,6 +116,7 @@ Or use an API call which is more enhanced.<br>
  
 ________________________________________
  # Directory Structure
+```treeview
 /opt/network_manager/<br>
 ├── app/             # Flask app<br>
 ├──── tmp/           # Temporary workspace<br>
@@ -126,33 +127,36 @@ ________________________________________
 ├────css             # styles <br>
 ├────js              # java script<br> 
 ├──zero_touch.db     # SQLite database<br>
-
+```
 ________________________________________
  # JSON APIs
 Template Management<br>
-GET  /app/templates<br>
-POST /app/templates {name, content}<br>
-PUT  /app/templates/<id><br>
-DELETE /app/templates/<id><br>
-
+   GET  /app/templates<br>
+   POST /app/templates {name, content}<br>
+   PUT  /app/templates/<id><br>
+   DELETE /app/templates/<id><br>
+<br>
 Network Scanning<br>
-GET  /app/networks<br>
-POST /app/networks {cidr, interval}<br>
-POST /app/scan/<id>/start<br>
-POST /app/scan/<id>/stop<br>
-Device Discovery<br>
-GET  /app/discovered<br>
-POST /app/discovered {ip, name, template_id, hw_type, variables, status}<br>
-DELETE /app/discovered/<id><br>
+   GET  /app/networks<br>
+   POST /app/networks {cidr, interval}<br>
+   POST /app/scan/<id>/start<br>
+   POST /app/scan/<id>/stop<br>
+   Device Discovery<br>
+   GET  /app/discovered<br>
+   POST /app/discovered {ip, name, template_id, hw_type, variables, status}<br>
+   DELETE /app/discovered/<id><br>
+<br>
 Worker Handling<br>
-POST /app/deploy/<discovered_id><br>
-POST /app/workers/<id>/start<br>
-POST /app/workers/<id>/stop<br>
-GET  /app/worker/<id>/stream<br>
-GET  /app/workers/<id>/log<br>
-________________________________________
+   POST /app/deploy/<discovered_id><br>
+   POST /app/workers/<id>/start<br>
+   POST /app/workers/<id>/stop<br>
+   GET  /app/worker/<id>/stream<br>
+   GET  /app/workers/<id>/log<br>
+<br>
+____________________________________
 # Configuration Files
 error_keywords.json.<HW type><br>
+```Json
 [<br>
   "invalid",<br>
   "error",<br>
@@ -166,10 +170,12 @@ error_keywords.json.<HW type><br>
   "syntax\\s*error",<br>
   "Bad\\s*parameter"<br>
 ]<br>
-
+```
 # CSV Import Format
+```csv
 192.168.1.10,embedded,Spark-PTK<br>
 192.168.1.20,full,Spark-SD-WAN<br>
+```
 ________________________________________
  # Known Limitations
 •	Does not support SSH key auth (only username/password)<br>
