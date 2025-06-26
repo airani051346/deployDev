@@ -35,28 +35,13 @@ sudo chown -R "$APP_USER:$APP_USER" "$APP_DIR/app"
 sudo chmod -R 770 "$APP_DIR/app"
 
 echo "🛠️ Creating systemd service..."
-sudo tee /etc/systemd/system/zero_touch-api.service > /dev/null <<EOF
-[Unit]
-Description=Zero Touch Flask API
-After=network.target
-
-[Service]
-User=$APP_USER
-WorkingDirectory=$APP_DIR/app
-Environment="PATH=$APP_DIR/app/venv/bin"
-ExecStart=$APP_DIR/app/venv/bin/gunicorn -w 4 -b 127.0.0.1:5000 app:app
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
+sudo cp "$APP_DIR/app/service/zero_touch-api.service" /etc/systemd/system/
 
 sudo systemctl daemon-reexec
 sudo systemctl enable zero_touch-api
 sudo systemctl start zero_touch-api
 
 echo "🔒 Generating self-signed SSL certificate..."
-sudo mkdir -p "$APP_DIR/app/certs"
 sudo openssl req -x509 -nodes -days 365 \
   -newkey rsa:2048 \
   -keyout "$APP_DIR/app/certs/zero_touch.key" \
@@ -66,7 +51,7 @@ sudo openssl req -x509 -nodes -days 365 \
 echo "🌐 Configuring Nginx as reverse proxy..."
 sudo tee /etc/nginx/sites-available/zero_touch > /dev/null <<EOF
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
     server_name _;
 
     ssl_certificate     $APP_DIR/app/certs/zero_touch.crt;
@@ -79,6 +64,7 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
