@@ -1,24 +1,23 @@
-# deployDev
+# deployDev – Zero-Touch Deployment Manager
 
 # requiemets: 
 - dedicated Ubuntu Linux host<br>
 unattended installation<br>
     curl -sSL https://raw.githubusercontent.com/airani051346/deployDev/refs/heads/main/install-script.sh | bash<br>
 
-defaults in the script: <br>
-folder: /opt/network_manager<br>
-user: www-data<br>
-port: 443. port 80 is redirected automatically<br>
+default settings in the script: <br>
+• Installation directory:: /opt/network_manager<br>
+• Application user: www-data<br>
+• port: 443. port 80 is redirected automatically<br>
       
 this shell scripts installs all necessary modules and configures necessary permissions. <br>
 for the first try self signed certificates are generated <br>
 
 
-in case you dont have a dedicated host you can open the raw view of the shell script and do the steps one by one.<br>
+Note: If you don’t have a dedicated host, you can view the raw shell script on GitHub and execute the steps manually..<br>
 
  
-# documentation:
-Zero-Touch Deployment Manager - Documentation<br>
+# documentation: Zero-Touch Deployment Manager - Documentation<br>
 
 # Overview
 The solution is a Flask-based web application designed for automated discovery, templating, <br>
@@ -41,8 +40,8 @@ ________________________________________
  
 •	Navigate to the Templates tab<br>
 •	Create configuration templates <br>
-o	Variable with ascii char only. No – allowed only _<br>
-o	Enter_expert_mode: and exit_expert_mode: allow to execute commands in the bash shell
+•	Variable with ascii char only. No – allowed only _<br>
+•	Enter_expert_mode: and exit_expert_mode: allow to execute commands in the bash shell
 
  # Template example: 
 set hostname {{hostname}}<br>
