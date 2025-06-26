@@ -257,7 +257,7 @@ def ssh_execute_lines(ip, user, password, lines, stop_keywords=None, timeout=120
             stripped = line.strip()
 
             # Special command: enter expert mode
-            if stripped == "enter_expert_mode":
+            if stripped == "enter_expert_mode:":
                 shell.send("expert\n")
                 output = wait_for_prompt(shell, timeout=10, grace_period=2)
                 output_log.append(f"> expert\n{output}\n")
@@ -276,7 +276,7 @@ def ssh_execute_lines(ip, user, password, lines, stop_keywords=None, timeout=120
                 continue
 
             # Special command: exit expert mode
-            if stripped == "exit_expert_mode":
+            if stripped == "exit_expert_mode:":
                 shell.send("exit\n")
                 output = wait_for_prompt(shell, timeout=10, grace_period=2)
                 output_log.append(f"> exit\n{output}\n")
@@ -999,6 +999,45 @@ def start_worker(id):
     
     ready.wait(timeout=1)
     return jsonify(success=True, pid=result.get('pid'))
+
+# ###########################
+# hw-types Page
+# ###########################
+@app.route('/hwtypes')
+def hwtypes_page():
+    return render_template('hwtypes.html')
+
+@app.route('/app/hwtypes', methods=['GET', 'POST'])
+def hwtypes():
+    conn = db(); c = conn.cursor()
+    if request.method == 'POST':
+        data = request.get_json()
+        name = data.get('name')
+        if not name:
+            return jsonify(error='Name required'), 400
+        c.execute("INSERT INTO HWType(Type) VALUES (?)", (name,))
+        conn.commit()
+        return jsonify(status='ok')
+    rows = c.execute("SELECT id, Type FROM HWType").fetchall()
+    return jsonify([{"id": r["id"], "name": r["Type"]} for r in rows])
+
+@app.route('/app/hwtypes/<int:id>', methods=['PUT'])
+def update_hwtype(id):
+    data = request.get_json()
+    name = data.get('name')
+    if not name:
+        return jsonify(error='Name required'), 400
+    conn = db(); c = conn.cursor()
+    c.execute("UPDATE HWType SET Type=? WHERE id=?", (name, id))
+    conn.commit()
+    return jsonify(status='updated')
+
+@app.route('/app/hwtypes/<int:id>', methods=['DELETE'])
+def delete_hwtype(id):
+    conn = db(); c = conn.cursor()
+    c.execute("DELETE FROM HWType WHERE id=?", (id,))
+    conn.commit()
+    return jsonify(status='deleted')
 
 # ###########################
 # settings Page
