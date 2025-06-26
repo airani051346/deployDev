@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <title>{% block title %}Zero‑Touch{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/adv.css') }}">>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/adv.css') }}">
 </head>
 <body>
   
@@ -12,6 +12,9 @@
     <nav class="sidebar">
       <a href="{{ url_for('templates_page') }}" class="{{ 'active' if request.endpoint=='templates_page' else '' }}">
         <i class="fas fa-file-alt"></i> Templates
+      </a>
+      <a href="{{ url_for('hwtypes_page') }}" class="{{ 'active' if request.endpoint=='hwtypes_page' else '' }}">
+        <i class="fas fa-list"></i> HW Types
       </a>
       <a href="{{ url_for('networks_page') }}" class="{{ 'active' if request.endpoint=='networks_page' else '' }}">
         <i class="fas fa-network-wired"></i> Networks
