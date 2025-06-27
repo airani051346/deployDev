@@ -1,4 +1,4 @@
-# deployDev – Zero-Touch Deployment Manager
+# deployDev – Device deployment Manager
 
 # requiemets: 
 - dedicated Ubuntu Linux host<br>
@@ -17,7 +17,7 @@ for the first try self signed certificates are generated <br>
 Note: If you don’t have a dedicated host, you can view the raw shell script on GitHub and execute the steps manually..<br>
 
  
-# documentation: Zero-Touch Deployment Manager - Documentation<br>
+# documentation: Device Deployment Manager - Documentation<br>
 
 # Overview
 The solution is a Flask-based web application designed for automated discovery, templating, <br>
