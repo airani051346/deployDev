@@ -57,12 +57,13 @@ show diag
 show interfaces table
 ```
  # Step 2: Add Networks to Scan
- 
+
+If you don’t want to use nmap to scan your network please go to step 3<br>
 •	Go to the Networks tab<br>
 •	Enter a CIDR (e.g. 192.168.1.0/24) or IP range (e.g. 192.168.1.10-192.168.1.50)<br>
 •	interval in seconds is under construction <br>
 •	Start scanning to discover devices<br>
-If vou don’t want to use nmap to scan your network please go to step 3<br>
+
 
  # Step 3: Review Discovered Devices
 •	Open the Discovered tab<br>
