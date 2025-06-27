@@ -72,8 +72,10 @@ If you don’t want to use nmap to scan your network please go to step 3<br>
 Note: visible variables are the predefined in your selected template<br>
 •	Optionally, use the Import CSV feature for bulk additions<br>
 you can either use a csv file to import devices with following structure:<br>
-192.168.1.10,embedded,Spark-PTK<br>
-192.168.1.20,full,Spark-SD-WAN<br>
+```csv
+192.168.1.10,embedded,Spark-PTK
+192.168.1.20,full,Spark-SD-WAN
+```
 Where the first entry is the ip, second Hardware-type and third used template.<br>
 Or use an API call which is more enhanced.<br>
 ```API
