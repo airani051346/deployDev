@@ -39,7 +39,8 @@ def wait_for_prompt(shell, timeout=10, grace_period=1, skip_grace=False):
     return buffer.strip()
 
 def process_lines(shell, lines, stop_keywords, expert_pass, worker_id, start_line=0, current_log=''):
-    stop_keywords = [kw.lower() for kw in (stop_keywords or [])]
+    #stop_keywords = [kw.lower() for kw in (stop_keywords or [])]
+    stop_keywords = [kw.strip().strip('"').lower() for kw in (stop_keywords or [])]
     conn = db()
     c = conn.cursor()
     success = True
