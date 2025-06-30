@@ -123,34 +123,19 @@ ________________________________________
 /opt/network_manager/
 ├── app/             # Flask app
 ├──── tmp/           # Temporary workspace
-├────backend/        # here is the model
-├──────keywords      # Stop-word lists per hardware type 
+├────backend/        # here is the model 
 ├──certs             # web front ssl certificates
 ├──templates         # web front 
 ├────css             # styles 
 ├────js              # java script
 ├──zero_touch.db     # SQLite database
 ```
-# error keyword file structure
-filename is pointing also to hw-type eg: 
-   <h3>error_keywords.json.embedded</h3> <br>
-is used for hw-type embedded
-space in regex notation
-```Json
-[
-    "invalid",
-    "error",
-    "failed",
-    "permission\\s*denied",
-    "command\\s*not\\s*found",
-    "not\\s*recognized",
-    "cannot",
-    "denied",
-    "unexpected",
-    "syntax\\s*error",
-    "Bad\\s*parameter"
-]
+# error keyword 
+```csv
+"invalid",    "error",    "failed",    "permission\\s*denied",    "command\\s*not\\s*found",    "not\\s*recognized",    "cannot",    "denied",    "Bad\\s*parameter"
 ```
+
+
 ________________________________________
  # REST APIs
 ```
