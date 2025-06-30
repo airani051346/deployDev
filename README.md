@@ -122,7 +122,6 @@ ________________________________________
 ```treeview
 /opt/network_manager/
 ├── app/             # Flask app
-├──── tmp/           # Temporary workspace
 ├────backend/        # here is the model 
 ├──certs             # web front ssl certificates
 ├──templates         # web front 
@@ -131,9 +130,21 @@ ________________________________________
 ├──zero_touch.db     # SQLite database
 ```
 # error keyword 
+
+each HW-type can have its ohn error code/word definition. these words are used to stop proccessing the stored conifuration as sson as they appear on output.
 ```csv
 "invalid",    "error",    "failed",    "permission\\s*denied",    "command\\s*not\\s*found",    "not\\s*recognized",    "cannot",    "denied",    "Bad\\s*parameter"
 ```
+
+a restart will try to reexecute the same line again. In case you want to skipp that line, admin has to increase the value of line Nr in database.
+
+check last line Nr: 
+    sqlite3 zero_touch.db "select last_line from workers where id=1"; 
+
+set new line nR to continue with:
+    sqlite3 zero_touch.db "UPDATE workers SET last_line = 3 WHERE id = 1;"
+
+
 
 
 ________________________________________
