@@ -2,7 +2,11 @@
 
 # requiemets: 
 - dedicated Ubuntu Linux host<br>
-unattended installation<br>
+
+
+
+
+# unattended installation<br>
     curl -sSL https://raw.githubusercontent.com/airani051346/deployDev/refs/heads/main/install-script.sh | bash<br>
 
 default settings in the script: <br>
