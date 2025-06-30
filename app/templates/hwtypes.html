@@ -14,11 +14,12 @@
     <tr>
       <th>ID</th>
       <th>Type</th>
+      <th>Error Keywords</th>
       <th>Actions</th>
     </tr>
   </thead>
   <tbody id="hwtype-body">
-    <!-- Will be populated by JS -->
+    <!-- JS will insert rows here -->
   </tbody>
 </table>
 
@@ -37,12 +38,29 @@ async function loadHwTypes() {
         <input type="text" value="${t.name}" id="type-${t.id}" style="padding: 4px; width: 200px;">
       </td>
       <td>
+        <textarea id="err-${t.id}" rows="6" cols="40">${formatKeywordsForEdit(t.err_keywords)}</textarea>
+      </td>
+      <td>
         <button id="apply-${t.id}" onclick="applyHwType(${t.id})">Apply</button>
         <button onclick="deleteHwType(${t.id})" style="color: red;">Delete</button>
       </td>
     `;
     tbody.appendChild(tr);
   });
+}
+
+// Helper: convert DB "a","b","c" to multi-line plain text
+function formatKeywordsForEdit(raw) {
+  if (!raw) return '';
+  return raw.split(',').map(k => k.trim().replace(/^"|"$/g, '')).join('\n');
+}
+
+// Helper: convert textarea back to `"a","b","c"`
+function formatKeywordsForSave(text) {
+  return text.split('\n')
+    .map(k => `"${k.trim()}"`)
+    .filter(k => k.length > 2) // keep only non-empty
+    .join(',');
 }
 
 async function addHwType() {
@@ -67,9 +85,12 @@ async function addHwType() {
 
 async function applyHwType(id) {
   const input = document.getElementById(`type-${id}`);
+  const textarea = document.getElementById(`err-${id}`);
   const btn = document.getElementById(`apply-${id}`);
+
   const name = input.value.trim();
-  if (!name) return alert("Type name cannot be empty.");
+  const lines = textarea.value.split('\n').map(line => line.trim()).filter(Boolean);
+  const err_keywords = lines.map(line => `"${line}"`).join(', ');
 
   btn.disabled = true;
   btn.textContent = 'Applying...';
@@ -77,7 +98,7 @@ async function applyHwType(id) {
   const res = await fetch(`/app/hwtypes/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name })
+    body: JSON.stringify({ name, err_keywords })
   });
 
   if (res.ok) {

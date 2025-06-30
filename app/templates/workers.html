@@ -50,36 +50,6 @@ function closeSSEConnection(workerId) {
   }
 }
 
-
-function toggleWorker(id) {
-  const btn = document.getElementById(`toggle-${id}`);
-  const logEl = document.getElementById(`log-${id}`);
-  if (!logEl) return;
-  logEl.innerText = 'Starting...';
-  fetch(`/app/workers/${id}/start`, { method: 'POST' }).then(() => {
-    const evtSource = new EventSource(`/app/worker/${id}/sse`);
-    activeSSEConnections[id] = evtSource;
-    evtSource.onmessage = e => {
-      if (e.data === '[SSE_END]') {
-        evtSource.close();
-        delete activeSSEConnections[id];
-        return;
-      }
-      const currentLog = document.getElementById(`log-${id}`);
-      if (currentLog) {
-        currentLog.innerHTML += colorizeLog(e.data) + '<br>';
-        currentLog.scrollTop = currentLog.scrollHeight;
-      }
-    };
-    evtSource.onerror = () => {
-      const currentLog = document.getElementById(`log-${id}`);
-      if (currentLog) currentLog.innerHTML += '<span class="error">❌ SSE error</span><br>';
-      evtSource.close();
-      delete activeSSEConnections[id];
-    };
-  });
-}
-
 function colorizeLog(raw) {
   return (raw || '')
     .replace(/^✅.*/gm, m => `<span class="success">${m}</span>`)
@@ -102,7 +72,7 @@ function streamWorkerLog(id) {
   logEl.innerHTML = '';
   logEl.dataset.live = 'true'; // markiere als aktives SSE-Log
 
-  const evtSource = new EventSource(`/app/worker/${id}/stream`);
+  const evtSource = new EventSource(`/app/worker/${id}/sse`);
   activeSSEConnections[id] = evtSource;
   evtSource.onmessage = e => {
     if (e.data === '[SSE_END]') {
@@ -142,30 +112,69 @@ function pollActiveWorkerLogs() {
 
 async function toggleWorker(id) {
   const btn = document.getElementById(`toggle-${id}`);
-  const log = document.getElementById(`log-${id}`);
+  const logEl = document.getElementById(`log-${id}`);
   const pidField = document.getElementById(`pid-${id}`);
   const statusField = document.getElementById(`status-${id}`);
 
+  if (!btn || !logEl) return;
+
   if (btn.innerText === 'Start Configuration') {
-    log.innerText = 'Starting configuration...';
-    log.dataset.live = 'true';
+    // Starting
+    logEl.innerText = '🔄 Starting configuration...\n';
+    logEl.dataset.live = 'true';
+
     const res = await fetch(`/app/workers/${id}/start`, { method: 'POST' });
     const data = await res.json();
-    streamWorkerLog(id);
+
+    if (data.error) {
+      logEl.innerText += `❌ ${data.error}\n`;
+      return;
+    }
+
     btn.innerText = 'Stop Worker';
     pidField.innerText = data.pid || '-';
     statusField.innerText = 'running';
+
+    // Open SSE
+    const evtSource = new EventSource(`/app/worker/${id}/sse`);
+    activeSSEConnections[id] = evtSource;
+
+    evtSource.onmessage = e => {
+      if (e.data === '[SSE_END]') {
+        evtSource.close();
+        delete activeSSEConnections[id];
+        btn.innerText = 'Start Configuration';
+        pidField.innerText = '-';
+        statusField.innerText = 'finished';
+        logEl.dataset.live = 'false';
+        return;
+      }
+      logEl.innerHTML += colorizeLog(e.data) + '<br>';
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    evtSource.onerror = () => {
+      logEl.innerHTML += '<span class="error">❌ SSE connection error</span><br>';
+      evtSource.close();
+      delete activeSSEConnections[id];
+      btn.innerText = 'Start Configuration';
+      logEl.dataset.live = 'false';
+    };
+
   } else {
-    log.innerText += '\nStopping worker...';
+    // Stopping
+    logEl.innerText += '\n🛑 Stopping worker...\n';
     const res = await fetch(`/app/workers/${id}/stop`, { method: 'POST' });
     const data = await res.json();
+
     if (data.success) {
+      logEl.innerText += '✅ Worker stopped.\n';
       btn.innerText = 'Start Configuration';
-      log.innerText += '\n✅ Worker stopped.';
       pidField.innerText = '-';
       statusField.innerText = 'stopped';
+      closeSSEConnection(id);
     } else {
-      log.innerText += `\n❌ Error: ${data.error || 'Could not stop worker'}`;
+      logEl.innerText += `❌ Error: ${data.error || 'Could not stop worker'}`;
     }
   }
 }
@@ -229,11 +238,12 @@ function applyFilters() {
           <button class="btn-delete" data-delete="${w.id}">Delete</button>
         </td>
         <td>
-          ${w.log ? `<button class="btn-view-log" data-viewlog="${w.id}">View Last Log</button><br><br>` : ''}
-          <pre class="worker-log" id="log-${w.id}" data-live="false"></pre>
+          
+          <button class="btn-view-log" data-viewlog="${w.id}">View Status</button><br><br>
+          <pre class="worker-log" id="log-${w.id}" data-live="false" style="width:450px; height:100px; overflow:auto; white-space:pre-wrap;"></pre>
         </td>
       `;
-      
+      //${w.log ? `<button class="btn-view-log" data-viewlog="${w.id}">View Log</button><br><br>` : ''}
       // Add new row to fragment
       fragment.appendChild(tr);
     }
@@ -275,7 +285,7 @@ function applyFilters() {
           const data = await res.json();
           logEl.innerHTML = colorizeLog(data.log || '');
           logEl.scrollTop = logEl.scrollHeight;
-          viewBtn.style.display = 'none';
+          
         });
       }
     }

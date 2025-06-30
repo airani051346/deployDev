@@ -2,10 +2,8 @@ from flask import Flask, request, jsonify, render_template, Response, url_for, s
 from jinja2 import Environment, BaseLoader, meta, exceptions as jinja2_exceptions
 import os, sqlite3, json, threading, logging, nmap, requests, traceback, subprocess, time, signal, tempfile, ipaddress, paramiko, re, socket
 
-
 # Constants
 DEFAULT_TEMPLATE_ID = 1
-STOP_KEYWORDS_DEFAULT = ["error", "failed", "denied"]
 PROMPT_PATTERN = re.compile(r'[\r\n][^\r\n]*[#>$%:] ?$')
 
 # Initialize Flask app and define template/static folders
@@ -17,19 +15,6 @@ DB_PATH = os.path.join(BASE_DIR, '..', 'zero_touch.db')
 TMP_DIR = os.path.join(BASE_DIR, 'tmp') 
 os.makedirs(TMP_DIR, exist_ok=True)
 
-
-# http://<your-server>:5000/app/discovered
-#{
-#  "ip": "192.168.1.123",
-#  "name": "lab-device-1",
-#  "template_id": 3,
-#  "hw_type": "Fortinet",
-#  "variables": {
-#    "hostname": "fw01"
-#  },
-#  "status": "discovered"
-#}
-
 # Initialize Jinja2 environment for template rendering
 jinja_env = Environment(loader=BaseLoader())
 
@@ -38,10 +23,10 @@ active_scans = {}
 worker_processes = {}
 process_registry = {}  # network_id -> thread
 log_buffers = {}  # worker_id -> log buffer
-worker_lock = threading.Lock()
 active_sse_connections = {}
 cancel_flags = {}
-
+worker_processes = {}
+worker_lock = threading.Lock()
 
 def db():
     """
@@ -49,6 +34,7 @@ def db():
     """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # conn.execute("PRAGMA journal_mode=WAL;")
     return conn
 
 def simplify_regex(pattern):
@@ -169,260 +155,40 @@ def do_scan_process(network_id, cidr, interval):
         process_registry.pop(network_id, None)
         app.logger.info(f"🛑 Finished scan for Network ID {network_id}")
         
-def stream_output(pipe, buffer, label=''):
-    for line in iter(pipe.readline, ''):
-        buffer.append(f"{label}{line}")
-    pipe.close()
+#def stream_output(pipe, buffer, label=''):
+#    for line in iter(pipe.readline, ''):
+#        buffer.append(f"{label}{line}")
+#    pipe.close()
 
-def load_stop_keywords(hw_type):
-    try:
-        if hw_type:
-            file = f"error_keywords.json.{hw_type.lower()}"
-            path = os.path.join(BASE_DIR, 'keywords' ,file)
-            if os.path.exists(path):
-                with open(path) as f:
-                    return [w.lower() for w in json.load(f)]
-        with open(os.path.join(BASE_DIR, 'error_keywords.json')) as f:
-            return [w.lower() for w in json.load(f)]
-    except Exception as e:
-        logging.warning(f"Could not load error keywords for '{hw_type}': {e}")
-        return STOP_KEYWORDS_DEFAULT
-
-def wait_for_prompt(shell, timeout=5, grace_period=1):
-    buffer, start_time = '', time.time()
-    prompt_detected_time = None
-
-    while True:
-        if shell.recv_ready():
-            part = shell.recv(4096).decode(errors='ignore')
-            buffer += part
-
-            app.logger.debug(f"[SSH] Raw recv: {repr(part)}")
-
-            if PROMPT_PATTERN.search(buffer):
-                if not prompt_detected_time:
-                    prompt_detected_time = time.time()
-                elif time.time() - prompt_detected_time >= grace_period:
-                    return buffer.strip()
-                
-        if prompt_detected_time and time.time() - prompt_detected_time >= grace_period:
-            break
-        if time.time() - start_time > timeout:
-            break
-
-        time.sleep(1)
-
-    return buffer.strip()
-
-def ssh_execute_lines(ip, user, password, lines, stop_keywords=None, timeout=120, worker_id=None):
-    output_log, failed_line_index, success = [], 0, True
-    stop_keywords = [kw.lower() for kw in (stop_keywords or [])]
-    app.logger.info(f"stopping keywords: {stop_keywords}")
-
-    try:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(ip, username=user, password=password, timeout=10)
-        shell = client.invoke_shell()
-        shell.settimeout(2)
-        wait_for_prompt(shell)
-
-        # Load expert credentials if available
-        expert_user, expert_pass = user, password
-        if worker_id:
-            conn = db()
-            c = conn.cursor()
-            cred = c.execute("""
-                SELECT COALESCE(e.username, def.username) AS expert_user,
-                       COALESCE(e.password, def.password) AS expert_pass
-                FROM workers w
-                JOIN discovered d ON w.discovered_id = d.id
-                LEFT JOIN settings e ON d.expert_cred_id = e.id
-                LEFT JOIN settings def ON def.is_default = 1
-                WHERE w.id = ?
-            """, (worker_id,)).fetchone()
-            if cred:
-                expert_user = cred['expert_user'] or user
-                expert_pass = cred['expert_pass'] or password
-            conn.close()
-
-        expert_mode = False  # track current shell mode
-
-        for i, line in enumerate(lines):
-            if cancel_flags.get(worker_id, threading.Event()).is_set():
-                output_log.append("🛑 Execution cancelled by user.\n")
-                success = False
-                break
-
-            stripped = line.strip()
-
-            # Special command: enter expert mode
-            if stripped == "enter_expert_mode:":
-                shell.send("expert\n")
-                output = wait_for_prompt(shell, timeout=10, grace_period=2)
-                output_log.append(f"> expert\n{output}\n")
-
-                if "password" in output.lower():
-                    shell.send(expert_pass + "\n")
-                    output = wait_for_prompt(shell, timeout=10, grace_period=2)
-                    output_log.append(f"> (expert password)\n{output}\n")
-
-                if "#" not in output:
-                    output_log.append("🛑 Failed to enter expert mode.\n")
-                    success = False
-                    break
-
-                expert_mode = True
-                continue
-
-            # Special command: exit expert mode
-            if stripped == "exit_expert_mode:":
-                shell.send("exit\n")
-                output = wait_for_prompt(shell, timeout=10, grace_period=2)
-                output_log.append(f"> exit\n{output}\n")
-                expert_mode = False
-                continue
-
-            shell.send(stripped + '\n')
-            time.sleep(0.5)
-            output = wait_for_prompt(shell, timeout=10, grace_period=2)
-            combined = f"> {stripped}\n{output}\n"
-            output_log.append(combined)
-
-            matched = next((pattern for pattern in stop_keywords if re.search(pattern, output, re.IGNORECASE)), None)
-            if matched:
-                failed_line_index = i
-                readable_keyword = simplify_regex(matched)
-                output_log.append(f"🛑 Detected error keyword: '{readable_keyword}' — Aborting at line {i + 1}.\n")
-                success = False
-
-                if worker_id:
-                    try:
-                        conn = db()
-                        conn.execute("UPDATE discovered SET status='failed' WHERE id=(SELECT discovered_id FROM workers WHERE id=?)", (worker_id,))
-                        conn.commit()
-                        conn.close()
-                    except Exception as e:
-                        output_log.append(f"⚠️ DB update error on failure: {e}\n")
-
-            if not success:
-                break
-
-        shell.close()
-        client.close()
-
-    except (paramiko.AuthenticationException, socket.timeout, Exception) as e:
-        output_log.append(f"\u274c SSH Exception: {e}\n")
-        success = False
-
-    return success, failed_line_index, ''.join(output_log)
-
-
-def run_worker_lines(id, storedconfig):
-    conn = db()
-    try: 
-        c = conn.cursor()
-
-        with worker_lock:
-            worker_processes[id] = None
-
-        row = c.execute("""
-            SELECT COALESCE(s.username, def.username) AS user,
-                COALESCE(s.password, def.password) AS password,
-                d.ip, w.last_line, d.hw_type, d.expert_cred_id,
-                d.setting_id,
-                s.username AS s_user, def.username AS def_user
-            FROM workers w
-            JOIN discovered d ON w.discovered_id = d.id
-            LEFT JOIN settings s ON d.setting_id = s.id
-            LEFT JOIN settings def ON def.is_default = 1
-            WHERE w.id = ?
-        """, (id,)).fetchone()
-
-        if not row:
-            app.logger.error(f"Worker ID {id} not found in database.")
-            return None
-        
-        ip = row['ip']
-        user = row['user']
-        password = row['password']
-        hw_type = row['hw_type'] or ''
-        expert_cred_id = row['expert_cred_id']
-        setting_id = row['setting_id']
-        start_line = row['last_line'] or 0
-        expert_user, expert_pass = user, password
-
-        if not user or not password:
-            log = "❌ Missing username or password for device. Aborting.\n"
-            c.execute("UPDATE workers SET log=? WHERE id=?", (log, id))
-            conn.commit()
-            conn.close()
-            app.logger.error(f"Missing credentials for worker ID {id}.")
-            return None
-
-        if expert_cred_id:
-            expert_row = c.execute("SELECT username, password FROM settings WHERE id=?", (expert_cred_id,)).fetchone()
-            if expert_row:
-                expert_user = expert_row['username']
-                expert_pass = expert_row['password']
-                if not expert_user or not expert_pass:
-                    log = "❌ Expert credentials are incomplete. Aborting.\n"
-                    c.execute("UPDATE workers SET log=? WHERE id=?", (log, id))
-                    conn.commit()
-                    app.logger.error(f"Missing expert credentials for worker ID {id}.") 
-                    return None
-
-        stop_keywords = load_stop_keywords(hw_type)
-
-        log =  f"ℹ️ HW-Type: {hw_type}\n"
-        log += f"ℹ️ Using credentials from settings ID: {setting_id or 'default'}\n"
-        log += f"ℹ️ Username: {user}  | Expert Username: {expert_user} \n"
-        log += f"ℹ️ keywords: {stop_keywords} \n"
-
-        c.execute("UPDATE discovered SET status='running' WHERE id=(SELECT discovered_id FROM workers WHERE id=?)", (id,))
-        conn.commit()
-
-        lines = storedconfig.splitlines()[start_line:]
-        if not lines:
-            log += "ℹ️ Nothing to execute.\n"
-            c.execute("UPDATE workers SET log=? WHERE id=?", (log, id))
-            conn.commit()
-            app.logger.info(f"Worker ID {id} has no lines to execute.")
-            return None
-
-        
-        success, failed_index, output_log = ssh_execute_lines(ip, user, password, lines, stop_keywords, worker_id=id)
-
-        if success:
-            log += "✅ All lines executed successfully.\n" + output_log
-            c.execute("UPDATE workers SET last_line=?, log=? WHERE id=?", (start_line + len(lines), log, id))
-            c.execute("""
-                UPDATE discovered
-                SET status = CASE WHEN status != 'error' THEN 'completed' ELSE status END
-                WHERE id = (SELECT discovered_id FROM workers WHERE id=?)
-            """, (id,))
-        else:
-            log += f"❌ Execution failed at line {start_line + failed_index + 1}.\n{output_log}\n"
-            c.execute("UPDATE workers SET last_line=?, log=? WHERE id=?", (start_line + failed_index, log, id))
-            c.execute("""
-                UPDATE discovered
-                SET status = CASE WHEN status != 'error' THEN 'failed' ELSE status END
-                WHERE id = (SELECT discovered_id FROM workers WHERE id=?)
-            """, (id,))
-
-        c.execute("""
-            UPDATE discovered
-            SET status = CASE WHEN status != 'error' THEN 'finished' ELSE status END
-            WHERE id = (SELECT discovered_id FROM workers WHERE id=?)
-        """, (id,))
-        conn.commit()
-    finally:
-        conn.close()
-
-        with worker_lock:
-            worker_processes.pop(id, None)
-
-    return None
+#def wait_and_stream_prompt(shell):
+#    buffer = ''
+#    start_time = time.time()
+#    prompt_detected_time = None
+#
+#    while True:
+#        if shell.recv_ready():
+#            part = shell.recv(4096).decode(errors='ignore')
+#            buffer += part
+#
+#            for line in part.splitlines():
+#                yield f"data: {line}\n\n"
+#
+#            if PROMPT_PATTERN.search(buffer):
+#                if not prompt_detected_time:
+#                    prompt_detected_time = time.time()
+#                elif time.time() - prompt_detected_time >= 1:
+#                    break
+#
+#        elif prompt_detected_time:
+#            break
+#
+#        elif time.time() - start_time > 10:
+#            yield f"data: ⏱️ Timeout waiting for prompt\n\n"
+#            break
+#
+#        time.sleep(0.2)
+#
+#    return buffer
 
 # ###########################
 # Route definition begin here
@@ -434,12 +200,6 @@ def index():
     except Exception as e:
         app.logger.error(f"Error rendering / loading base.html: {e}")
         return str(e), 500
-
-@app.route('/app/hwtypes', methods=['GET'])
-def get_hwtypes():
-    conn = db(); c = conn.cursor()
-    rows = c.execute("SELECT id, Type FROM HWType").fetchall()
-    return jsonify([{"id": r["id"], "name": r["Type"]} for r in rows])
 
 # ###########################
 # templates Page
@@ -693,80 +453,34 @@ def deploy(d_id):
 
 @app.route('/app/worker/<int:worker_id>/sse')
 def worker_sse(worker_id):
-    from queue import Queue
-    q = Queue()
-
     def stream():
-        while True:
-            msg = q.get()
-            if msg is None:
-                yield 'data: [SSE_END]\n\n'
-                break
-            yield f'data: {msg.strip()}\n\n'
-
-    def threaded_worker():
-        # Load credentials, stored config, IP etc. from DB
+        last_len = 0
         conn = db()
         c = conn.cursor()
-        row = c.execute("""SELECT d.ip, d.hw_type, w.storedconfig,
-                                  COALESCE(s.username, def.username) AS user,
-                                  COALESCE(s.password, def.password) AS password
-                           FROM workers w
-                           JOIN discovered d ON w.discovered_id = d.id
-                           LEFT JOIN settings s ON d.setting_id = s.id
-                           LEFT JOIN settings def ON def.is_default = 1
-                           WHERE w.id = ?""", (worker_id,)).fetchone()
 
-        if not row:
-            q.put("❌ Worker not found")
-            q.put(None)
-            return
+        while True:
+            row = c.execute("SELECT log FROM workers WHERE id=?", (worker_id,)).fetchone()
+            if not row:
+                yield 'data: [SSE_END]\n\n'
+                break
 
-        ip, hw_type, storedconfig = row['ip'], row['hw_type'], row['storedconfig']
-        user, password = row['user'], row['password']
+            log = row['log'] or ''
+            if len(log) > last_len:
+                new_part = log[last_len:]
+                for line in new_part.splitlines():
+                    yield f'data: {line}\n\n'
+                last_len = len(log)
 
-        stop_keywords = load_stop_keywords(hw_type)
-        lines = storedconfig.splitlines()
-        log_accumulator = []
-
-        try:
-            client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            client.connect(ip, username=user, password=password, timeout=10)
-            shell = client.invoke_shell()
-            shell.settimeout(2)
-            wait_for_prompt(shell)
-
-            for i, line in enumerate(lines):
-                shell.send(line.strip() + '\n')
-                time.sleep(0.5)
-                output = wait_for_prompt(shell, timeout=10, grace_period=2)
-                combined = f"> {line.strip()}\n{output}\n"
-                q.put(combined)
-                log_accumulator.append(combined)
-
-                matched = next((word for word in stop_keywords if word in output.lower()), None)
-                if matched:
-                    q.put(f"❌ Detected error keyword: '{matched}' — Aborting.")
-                    log_accumulator.append(f"❌ Detected error keyword: '{matched}' — Aborting.\n")
+            # If the worker process has exited, stop streaming
+            with worker_lock:
+                proc = worker_processes.get(worker_id)
+                if not proc or proc.poll() is not None:
+                    yield 'data: [SSE_END]\n\n'
                     break
 
-            shell.close()
-            client.close()
-        except Exception as e:
-            msg = f"❌ SSH Exception: {e}"
-            q.put(msg)
-            log_accumulator.append(msg)
+            time.sleep(1)
 
-        # Update DB with accumulated log
-        conn.execute("UPDATE workers SET log=? WHERE id=?", (''.join(log_accumulator), worker_id))
-        conn.commit()
-        conn.close()
-        q.put(None)  # terminate SSE
-
-    threading.Thread(target=threaded_worker, daemon=True).start()
     return Response(stream_with_context(stream()), mimetype='text/event-stream')
-
 @app.route('/app/workers/<int:id>/credential', methods=['POST'])
 def update_worker_credential(id):
     setting_id = request.json.get('setting_id')
@@ -779,107 +493,6 @@ def update_worker_credential(id):
     
     conn.commit(); conn.close()
     return jsonify(status='ok')
-
-@app.route('/app/worker/<int:worker_id>/stream')
-def stream_log(worker_id):
-    def generate():
-        conn = db()
-        c = conn.cursor()
-
-        row = c.execute("""
-            SELECT COALESCE(s.username, def.username) AS user,
-                   COALESCE(s.password, def.password) AS password,
-                   d.ip, w.storedconfig, d.hw_type
-            FROM workers w
-            JOIN discovered d ON w.discovered_id = d.id
-            LEFT JOIN settings s ON d.setting_id = s.id
-            LEFT JOIN settings def ON def.is_default = 1
-            WHERE w.id = ?
-        """, (worker_id,)).fetchone()
-
-        if not row:
-            yield "data: ❌ Worker not found\n\n"
-            return
-
-        ip, user, password, storedconfig, hw_type = row['ip'], row['user'], row['password'], row['storedconfig'], row['hw_type']
-        if not ip or not user or not password:
-            yield "data: ❌ Missing credentials or IP\n\n"
-            return
-
-        lines = storedconfig.splitlines()
-        stop_keywords = load_stop_keywords(hw_type)
-
-        try:
-            client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            client.connect(ip, username=user, password=password, timeout=10)
-            shell = client.invoke_shell()
-            shell.settimeout(2)
-
-            def send_and_wait(line):
-                shell.send(line + '\n')
-                time.sleep(0.5)
-                buffer = ''
-                start_time = time.time()
-                prompt_detected = False
-
-                while True:
-                    if shell.recv_ready():
-                        data = shell.recv(4096).decode(errors='ignore')
-                        buffer += data
-
-                        # 🔍 Debug raw SSH output
-                        app.logger.debug(f"[SSH] Raw buffer: {repr(data)}")
-
-                        # Send each line as SSE event (preserving line breaks)
-                        for log_line in data.split('\n'):
-                            log_line = log_line.rstrip('\r')
-                            if log_line.strip():
-                                yield f"data: {log_line}\n\n"
-
-                        # Check for stop keywords (regex or substring)
-                        matched = next((kw for kw in stop_keywords if re.search(kw, data, re.IGNORECASE)), None)
-                        if matched:
-                            app.logger.warning(f"[Worker {worker_id}] Detected error keyword: '{matched}' — Aborting.")
-                            yield f"data: ❌ Detected error keyword: '{matched}' — Aborting.\n\n"
-                            return False
-
-                        # Prompt detection
-                        if PROMPT_PATTERN.search(buffer):
-                            prompt_detected = True
-                    elif prompt_detected:
-                        break
-                    elif time.time() - start_time > 10:
-                        yield "data: ⏱️ Timeout waiting for prompt\n\n"
-                        app.logger.warning(f"[Worker {worker_id}] Timeout while waiting for prompt after line: {line}")
-                        break
-
-                    time.sleep(0.2)
-
-                return True
-
-
-            i = 0
-            while i < len(lines):
-                line = lines[i].strip()
-                yield f"data: > {line}\n\n"
-                ok = yield from send_and_wait(line)
-                if not ok:
-                    break
-                i += 1
-
-            yield "data: ✅ Finished.\n\n"
-            yield "data: [SSE_END]\n\n"
-
-            try:
-                client.close()
-            except Exception:
-                pass
-            yield "data: [SSE_END]\n\n"
-        except Exception as e:
-            yield f"data: ❌ SSH error: {str(e)}\n\n"
-
-    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 @app.route('/app/workers/<int:id>', methods=['DELETE'])
 def delete_worker(id):
@@ -906,31 +519,18 @@ def worker_log(id):
 def stop_worker(id):
     with worker_lock:
         proc = worker_processes.get(id)
-        if not proc:
-            return jsonify(success=False, error="Worker not running")
-        proc.terminate()
-        try:
+        if proc and proc.poll() is None:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
             proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-        worker_processes.pop(id, None)
-        cancel_flags.setdefault(id, threading.Event()).set()
+            worker_processes.pop(id, None)
 
-    conn = db(); c = conn.cursor()
-    c.execute("""
-    UPDATE discovered SET status='stopped'
-    WHERE id=(SELECT discovered_id FROM workers WHERE id=?)
-    """, (id,))
-    conn.commit(); conn.close()
+    # Also update DB
+    conn = db()
+    c = conn.cursor()
+    c.execute("UPDATE workers SET pid=NULL WHERE id=?", (id,))
+    conn.commit()
     return jsonify(success=True)
 
-@app.route('/app/worker/<int:id>/log_tail')
-def worker_log_tail(id):
-    conn = db(); c = conn.cursor()
-    row = c.execute("SELECT log FROM workers WHERE id=?", (id,)).fetchone()
-    if not row:
-        return jsonify(error='Worker not found'), 404
-    return jsonify(log=row['log'])
 
 @app.route('/app/workers/<int:id>/status', methods=['GET'])
 def get_worker_status(id):
@@ -966,39 +566,40 @@ def get_worker_log(id):
 
 @app.route('/app/workers/<int:id>/start', methods=['POST'])
 def start_worker(id):
-    conn = db(); c = conn.cursor()
+    conn = db()
+    c = conn.cursor()
+
     row = c.execute("SELECT * FROM workers WHERE id=?", (id,)).fetchone()
     if not row:
         return jsonify(error="Worker not found"), 404
-    
-    status = row['status'] if 'status' in row.keys() else None
 
-    if id in worker_processes or status == 'running':
-        return jsonify(error="Worker already running"), 409
+    with worker_lock:
+        # Already running?
+        proc = worker_processes.get(id)
+        if proc and proc.poll() is None:
+            return jsonify(error="Already running"), 409
 
-    storedconfig = row['storedconfig']
-    
-    result = {}
-    ready = threading.Event()
+        # Clear old PID
+        c.execute("UPDATE workers SET pid=NULL WHERE id=?", (id,))
+        conn.commit()
 
-    def wrapped_worker(id, config, result, ready):
-        pid = run_worker_lines(id, config)
-        result['pid'] = pid
-        ready.set()
+        # Clear old log
+        c.execute("UPDATE workers SET log='🔄 Starting configuration...\n' WHERE id=?", (id,))
+        conn.commit()
 
-    # Start the worker in a new thread
-    thread = threading.Thread(target=run_worker_lines, daemon=True, args=(id, storedconfig))
-    thread.start()
 
-    # Store the thread in the worker_processes dictionary using the worker ID as the key
-    # worker_processes[id] = thread
-        # Update the discovered device status to 'running'
+        # Launch
+        cmd = ["python3", os.path.join(BASE_DIR, "worker_subprocess.py"), str(id)]
+        app.logger.info(f"🔨 Launch: {' '.join(cmd)}")
 
-    #c.execute("""UPDATE discovered SET status='running'  WHERE id=(SELECT discovered_id FROM workers WHERE id=?) """, (id,))
-    #conn.commit()
-    
-    ready.wait(timeout=1)
-    return jsonify(success=True, pid=result.get('pid'))
+        proc = subprocess.Popen(cmd, preexec_fn=os.setsid)
+        worker_processes[id] = proc
+
+        # ✅ Save live PID
+        c.execute("UPDATE workers SET pid=? WHERE id=?", (proc.pid, id))
+        conn.commit()
+
+    return jsonify(success=True, pid=proc.pid)
 
 # ###########################
 # hw-types Page
@@ -1013,22 +614,29 @@ def hwtypes():
     if request.method == 'POST':
         data = request.get_json()
         name = data.get('name')
+        err_keywords = data.get('err_keywords', '')
         if not name:
             return jsonify(error='Name required'), 400
-        c.execute("INSERT INTO HWType(Type) VALUES (?)", (name,))
+        c.execute("INSERT INTO HWType(Type, err_keywords) VALUES (?, ?)", (name, err_keywords))
         conn.commit()
         return jsonify(status='ok')
-    rows = c.execute("SELECT id, Type FROM HWType").fetchall()
-    return jsonify([{"id": r["id"], "name": r["Type"]} for r in rows])
+    
+    print(f"bin hier")
+
+    rows = c.execute("SELECT id, Type, err_keywords FROM HWType").fetchall()
+    print([{"id": r["id"], "name": r["Type"], "err_keywords": r["err_keywords"]} for r in rows])
+    return jsonify([{"id": r["id"], "name": r["Type"], "err_keywords": r["err_keywords"]} for r in rows])
+
 
 @app.route('/app/hwtypes/<int:id>', methods=['PUT'])
 def update_hwtype(id):
     data = request.get_json()
     name = data.get('name')
+    err_keywords = data.get('err_keywords')
     if not name:
         return jsonify(error='Name required'), 400
     conn = db(); c = conn.cursor()
-    c.execute("UPDATE HWType SET Type=? WHERE id=?", (name, id))
+    c.execute("UPDATE HWType SET Type=?, err_keywords=? WHERE id=?", (name, err_keywords, id))
     conn.commit()
     return jsonify(status='updated')
 
@@ -1117,9 +725,4 @@ if __name__ == '__main__':
     gunicorn_logger = logging.getLogger('gunicorn.error')
     app.logger.handlers = gunicorn_logger.handlers
     app.logger.setLevel(gunicorn_logger.level)
-    try:
-        STOP_KEYWORDS_DEFAULT = load_stop_keywords(None)
-    except Exception as e:
-        logging.warning(f"Could not load fallback error keywords: {e}")
-
     app.run(host='127.0.0.1', port=5000)
