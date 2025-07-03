@@ -7,7 +7,7 @@
 
 
 # unattended installation<br>
-    curl -sSL https://raw.githubusercontent.com/airani051346/deployDev/refs/heads/main/install-script.sh | bash<br>
+    curl -sSL https://raw.githubusercontent.com/airani051346/deployDev/refs/heads/main/install-script.sh | bash
 
 default settings in the script: <br>
 • Installation directory:: /opt/network_manager<br>
