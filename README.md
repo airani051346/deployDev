@@ -45,7 +45,8 @@ ________________________________________
 •	Navigate to the Templates tab<br>
 •	Create configuration templates <br>
 •	Variable with ascii char only. No – allowed only _<br>
-•	Enter_expert_mode: and exit_expert_mode: allow to execute commands in the bash shell
+•	enter_expert_mode: and exit_expert_mode: allow to execute commands in the bash shell
+    entring and exiting "expert mode" is currently hardcoded in the worker_subrocess.py file. 
 
  # Template example: 
  ```bash
