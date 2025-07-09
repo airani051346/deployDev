@@ -41,7 +41,8 @@ ________________________________________
  
 # User Workflow
  # Step 1: Define Templates
- 
+ ![image](https://github.com/user-attachments/assets/25b32313-1449-473c-b10a-a929a14afdd0)
+
 •	Navigate to the Templates tab<br>
 •	Create configuration templates <br>
 •	Variable with ascii char only. No – allowed only _<br>
@@ -61,7 +62,16 @@ exit_expert_mode:
 show diag
 show interfaces table
 ```
- # Step 2: Add Networks to Scan
+
+ # Step 2: Add HW Type and define error Keys
+ ![image](https://github.com/user-attachments/assets/a7ef3df2-9a18-43af-8552-84a0d561840b)
+define a name and add err keys to stop pcecessing lines if it appears in the output of any line that has been<br>
+executed.
+example: "permission\\s*denied"       where the \\s* represents space in between the two words.
+
+ # Step 3: Add Networks to Scan
+![image](https://github.com/user-attachments/assets/c13f6315-616a-429a-ab81-3dbca94ba242)
+
 
 If you don’t want to use nmap to scan your network please go to step 3<br>
 •	Go to the Networks tab<br>
@@ -70,7 +80,9 @@ If you don’t want to use nmap to scan your network please go to step 3<br>
 •	Start scanning to discover devices<br>
 
 
- # Step 3: Review Discovered Devices
+ # Step 4: Review Discovered Devices
+ ![image](https://github.com/user-attachments/assets/2f55be2b-149f-40a1-989c-2f0a1890fc04)
+
 •	Open the Discovered tab<br>
 •	Newly found or imported devices appear with status discovered<br>
 •	Assign a hardware type and template to each device<br>
@@ -97,28 +109,35 @@ URL: http://<your-server>:5000/app/discovered
 }
 ```
  
- # Step 4: Apply Variables
-•	Each template may require variables (e.g. hostname, interface_ip)<br>
-•	Input these in the UI form or auto-assign from CSV<br>
-•	Apply credentials and expert credentials as needed<br>
+ # Step 5: Apply Variables
+ ![image](https://github.com/user-attachments/assets/cfb12798-63ac-46cf-85c4-975ce4898a37)
 
- # Step 5: Create Workers
+•	Apply Template,  Each template may require variables (e.g. hostname, interface_ip)<br>
+•	Apply HW Type<br>
+•	define Varianle values 
+•	select credentials and expert credentials as needed<br>
+
+You can import the devices over CSV File. see below
+
+ # Step 6: Create Workers
 •	Once a device is ready, click Create Worker<br>
 •	The system stores the rendered configuration<br>
 •	Device status changes to claimed<br>
 
- # Step 6: Start Worker Execution<br>
+ # Step 7: Start Worker Execution<br>
+ ![image](https://github.com/user-attachments/assets/982ce36c-b22f-44ea-95b1-8a596954b55a)
+
 •	Switch to the Workers tab<br>
 •	Click Start Configuration<br>
 •	SSH connects to the device and runs each line<br>
 •	Output is streamed live with color-coded feedback<br>
 •	If an error keyword is matched, execution halts<br>
- # Step 7: Monitor and Debug
+ # Step 8: Monitor and Debug
 •	Use View Log or Stream Log to monitor output<br>
 •	Failed tasks show error message and stop line<br>
 •	Restart or fix variables and try again if needed<br>
 
- # Step 8: Cleanup or Finalize
+ # Step 9: Cleanup or Finalize
 •	Stop or delete workers if needed<br>
 •	Device status will become finished, failed, or stopped<br>
  
