@@ -1,27 +1,35 @@
-{% extends "base.html" %} 
+{% extends "base.html" %}
 {% block title %}Networks{% endblock %}
 {% block content %}
+<div class="container my-4">
   <h2>Networks</h2>
-  <form id="net-form" class="form-inline">
-    <input type="text" name="cidr" placeholder="CIDR or IP‑range" list="suggestions" required>
-    <datalist id="suggestions">
-      <option value="192.168.0.0/24">
-      <option value="10.0.0.0/16">
-      <option value="172.16.0.0/12">
-      <option value="2001:db8::/64">
-      <option value="2001:db8::1-2001:db8::10">
-    </datalist>
-    <div class="tooltip-container">
-      <input type="number" name="interval" value="20" min="1" required readonly
-            style="background-color: #eee; cursor: not-allowed;">
-      <span class="tooltip-text">Not in Use</span>
+  <form id="net-form" class="row gy-2 gx-3 align-items-center mb-4">
+    <div class="col-md-auto">
+      <input type="text" name="cidr" class="form-control" placeholder="CIDR or IP‑range" list="suggestions" required>
+      <datalist id="suggestions">
+        <option value="192.168.0.0/24">
+        <option value="10.0.0.0/16">
+        <option value="172.16.0.0/12">
+        <option value="2001:db8::/64">
+        <option value="2001:db8::1-2001:db8::10">
+      </datalist>
     </div>
-    <button type="submit" class="btn-primary">➕ Add Network</button>
+
+    <div class="col-md-auto">
+      <div class="input-group">
+        <input type="number" name="interval" value="20" min="1" class="form-control bg-light" readonly>
+        <span class="input-group-text bg-light text-muted" title="Not in use">⏱</span>
+      </div>
+    </div>
+
+    <div class="col-md-auto">
+      <button type="submit" class="btn btn-primary">➕ Add Network</button>
+    </div>
   </form>
-  <br>
+
   <div class="table-responsive">
-    <table id="net-table" class="table">
-      <thead>
+    <table id="net-table" class="table table-bordered table-hover align-middle">
+      <thead class="table-light">
         <tr>
           <th>CIDR / IP‑range</th>
           <th>Interval (s)</th>
@@ -32,116 +40,110 @@
       <tbody></tbody>
     </table>
   </div>
+</div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ip-address/7.0.0/ip-address.min.js"></script>
-  <script>
-    function isIPv4(ip) {
-      return /^\d{1,3}(\.\d{1,3}){3}$/.test(ip);
-    }
 
-    function isIPv6(ip) {
-      return /^[0-9a-fA-F:]+$/.test(ip) && ip.includes(":");
-    }
+<script>
+  function isIPv4(ip) {
+    return /^\d{1,3}(\.\d{1,3}){3}$/.test(ip);
+  }
 
-    function detectInputType(value) {
-      const trimmed = value.trim();
+  function isIPv6(ip) {
+    return /^[0-9a-fA-F:]+$/.test(ip) && ip.includes(":");
+  }
 
-      if (trimmed.includes('/')) {
-        const [ip, prefix] = trimmed.split('/');
-        const prefixNum = parseInt(prefix);
-        if (isIPv4(ip) && prefixNum >= 0 && prefixNum <= 32) return 'IPv4_CIDR';
-        if (isIPv6(ip) && prefixNum >= 0 && prefixNum <= 128) return 'IPv6_CIDR';
-        return null;
-      }
-
-      if (trimmed.includes('-')) {
-        const [start, end] = trimmed.split('-').map(s => s.trim());
-        if (isIPv4(start) && isIPv4(end)) return 'IPv4_RANGE';
-        if (isIPv6(start) && isIPv6(end)) return 'IPv6_RANGE';
-        return null;
-      }
-
+  function detectInputType(value) {
+    const trimmed = value.trim();
+    if (trimmed.includes('/')) {
+      const [ip, prefix] = trimmed.split('/');
+      const prefixNum = parseInt(prefix);
+      if (isIPv4(ip) && prefixNum >= 0 && prefixNum <= 32) return 'IPv4_CIDR';
+      if (isIPv6(ip) && prefixNum >= 0 && prefixNum <= 128) return 'IPv6_CIDR';
       return null;
     }
+    if (trimmed.includes('-')) {
+      const [start, end] = trimmed.split('-').map(s => s.trim());
+      if (isIPv4(start) && isIPv4(end)) return 'IPv4_RANGE';
+      if (isIPv6(start) && isIPv6(end)) return 'IPv6_RANGE';
+      return null;
+    }
+    return null;
+  }
 
-    async function refresh() {
-      const [netRes, statusRes] = await Promise.all([
-        fetch('/app/networks'),
-        fetch('/app/scan/status')
-      ]);
-      const nets = await netRes.json();
-      const statusMap = await statusRes.json();
-      const tbody = document.querySelector('#net-table tbody');
-      tbody.innerHTML = '';
+  async function refresh() {
+    const [netRes, statusRes] = await Promise.all([
+      fetch('/app/networks'),
+      fetch('/app/scan/status')
+    ]);
+    const nets = await netRes.json();
+    const statusMap = await statusRes.json();
+    const tbody = document.querySelector('#net-table tbody');
+    tbody.innerHTML = '';
 
-      nets.forEach(n => {
-        const isRunning = statusMap[n.id] && statusMap[n.id]?.running;
-        const tr = document.createElement('tr');
-        tr.style.backgroundColor = isRunning ? '#f0fff0' : 'transparent';
+    nets.forEach(n => {
+      const isRunning = statusMap[n.id] && statusMap[n.id]?.running;
+      const tr = document.createElement('tr');
+      tr.className = isRunning ? 'table-success' : '';
 
-        tr.innerHTML = `
-          <td>${n.cidr}</td>
-          <td>${n.interval}</td>
-          <td>
-            <span class="${isRunning ? 'text-running' : 'text-idle'}">
-              ${isRunning ? 'On‑going' : 'Idle'}
-            </span>
-          </td>
-          <td>
-            <button class="btn-start" ${isRunning ? 'disabled style="opacity:0.5;"' : ''}>
-              ▶️ Start
-            </button>
-            <button class="btn-delete">🗑 Delete</button>
-          </td>
-        `;
-        const [startBtn, deleteBtn] = tr.querySelectorAll('button');
+      tr.innerHTML = `
+        <td>${n.cidr}</td>
+        <td>${n.interval}</td>
+        <td>
+          <span class="fw-bold ${isRunning ? 'text-success' : 'text-secondary'}">
+            ${isRunning ? 'On‑going' : 'Idle'}
+          </span>
+        </td>
+        <td>
+          <button class="btn btn-sm btn-success me-2" ${isRunning ? 'disabled' : ''}>
+            ▶️ Start
+          </button>
+          <button class="btn btn-sm btn-outline-danger">🗑 Delete</button>
+        </td>
+      `;
 
-        startBtn.onclick = async () => {
-          if (!confirm(`Start scan for ${n.cidr}?`)) return;
-          const res = await fetch(`/app/scan/${n.id}/start`, { method: 'POST' });
-          /* const res = await fetch(`/app/scan/${n.id}/start`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ interval: n.interval })
-          }); */
-          const json = await res.json();
-          if (!res.ok) alert(`❗ ${json.error}`);
+      const [startBtn, deleteBtn] = tr.querySelectorAll('button');
+
+      startBtn.onclick = async () => {
+        if (!confirm(`Start scan for ${n.cidr}?`)) return;
+        const res = await fetch(`/app/scan/${n.id}/start`, { method: 'POST' });
+        const json = await res.json();
+        if (!res.ok) alert(`❗ ${json.error}`);
+        refresh();
+      };
+
+      deleteBtn.onclick = async () => {
+        if (confirm(`Delete network ${n.cidr}?`)) {
+          await fetch(`/app/networks/${n.id}`, { method: 'DELETE' });
           refresh();
-        };
+        }
+      };
 
-        deleteBtn.onclick = async () => {
-          if (confirm(`Delete network ${n.cidr}?`)) {
-            await fetch(`/app/networks/${n.id}`, { method: 'DELETE' });
-            refresh();
-          }
-        };
+      tbody.appendChild(tr);
+    });
+  }
 
-        tbody.appendChild(tr);
-      });
+  document.getElementById('net-form').onsubmit = async e => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target));
+    const cidrInput = data.cidr.trim();
+    const type = detectInputType(cidrInput);
+
+    if (!type) {
+      alert("❗ Invalid input. Use CIDR (e.g. 192.168.1.0/24 or 2001:db8::/64) or range (e.g. 192.168.1.10-192.168.1.20 or 2001:db8::1-2001:db8::10).");
+      return;
     }
 
-    document.getElementById('net-form').onsubmit = async e => {
-      e.preventDefault();
-      const data = Object.fromEntries(new FormData(e.target));
-      const cidrInput = data.cidr.trim();
-      const type = detectInputType(cidrInput);
+    await fetch('/app/networks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
 
-      if (!type) {
-        alert("❗ Invalid input. Use CIDR (e.g. 192.168.1.0/24 or 2001:db8::/64) or range (e.g. 192.168.1.10-192.168.1.20 or 2001:db8::1-2001:db8::10). Let's go!");
-        return;
-      }
-
-      await fetch('/app/networks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-
-      e.target.reset();
-      refresh();
-    };
-
+    e.target.reset();
     refresh();
-    setInterval(refresh, 5000);
-  </script>
+  };
+
+  refresh();
+  setInterval(refresh, 5000);
+</script>
 {% endblock %}
