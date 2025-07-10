@@ -2,55 +2,68 @@
 {% block title %}Settings{% endblock %}
 {% block content %}
 
-<h2>Credentials</h2>
-<table class="table">
-  <thead>
-    <tr>
-      <th>Username</th>
-      <th>Password</th>
-      <th>Default</th>
-      <th>Expert</th>
-      <th>Actions</th>
-    </tr>
-  </thead>
-  <tbody id="settings-body">
-    {% for user in users %}
-    <tr data-id="{{ user.id }}">
-      <td>{{ user.username }}</td>
-      <td>
-        <input type="password" class="pw-input" value="{{ user.password }}">
-      </td>
-      <td style="text-align: center;">
-        <input type="radio" name="default_cred" class="default-radio"
-               {% if user.is_default %}checked{% endif %}
-               onchange="setDefault({{ user.id }})">
-      </td>
-      <td style="text-align: center;">
-        <input type="checkbox" class="expert-checkbox" {% if user.is_expert %}checked{% endif %}
-               onchange="setExpert({{user.id}}, this.checked)">
-      </td>
-      <td>
-        <button class="btn-start" onclick="applyChanges({{user.id}})">Apply</button>
-        <button class="btn-delete" onclick="deleteSetting({{user.id}})">Delete</button>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="container my-4">
+  <h2>Credentials</h2>
 
-<h3>Add New Credential</h3>
-<form onsubmit="addCredential(event)">
-  <input type="text" placeholder="Username" id="user" required>
-  <input type="password" placeholder="Password" id="password" required>
-  <label><input type="checkbox" id="is_expert"> Expert Credential</label>
-  <button type="submit" class="btn-start">Add</button>
-</form>
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Username</th>
+          <th>Password</th>
+          <th class="text-center">Default</th>
+          <th class="text-center">Expert</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="settings-body">
+        {% for user in users %}
+        <tr data-id="{{ user.id }}">
+          <td>{{ user.username }}</td>
+          <td style="max-width: 200px;">
+            <input type="password" class="form-control form-control-sm pw-input" value="{{ user.password }}">
+          </td>
+          <td class="text-center">
+            <input type="radio" name="default_cred" class="default-radio"  {% if user.is_default %}checked{% endif %}  onchange="setDefault({{ user.id }})">
+          </td>
+          <td class="text-center">
+            <input type="checkbox" class="expert-checkbox" {% if user.is_expert %}checked{% endif %}  onchange="setExpert({{ user.id }}, this.checked)">
+          </td>
+          <td>
+            <div class="d-flex flex-column flex-md-row gap-2">
+              <button class="btn btn-sm btn-success" onclick="applyChanges({{ user.id }})">Apply</button>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteSetting({{ user.id }})">Delete</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="mt-5">Add New Credential</h3>
+  <form class="row gy-2 gx-3 align-items-center" onsubmit="addCredential(event)">
+    <div class="col-md-auto">
+      <input type="text" class="form-control" placeholder="Username" id="user" required>
+    </div>
+    <div class="col-md-auto">
+      <input type="password" class="form-control" placeholder="Password" id="password" required>
+    </div>
+    <div class="col-md-auto form-check">
+      <input type="checkbox" class="form-check-input" id="is_expert">
+      <label class="form-check-label" for="is_expert">Expert</label>
+    </div>
+    <div class="col-md-auto">
+      <button type="submit" class="btn btn-primary">Add</button>
+    </div>
+  </form>
+</div>
 
 <script>
 function addCredential(event) {
   event.preventDefault();
-  const username = document.getElementById("user").value;
-  const password = document.getElementById("password").value;
+  const username = document.getElementById("user").value.trim();
+  const password = document.getElementById("password").value.trim();
   const is_expert = document.getElementById("is_expert").checked ? 1 : 0;
 
   fetch('/app/settings', {
@@ -68,7 +81,7 @@ function deleteSetting(id) {
 
 function applyChanges(id) {
   const row = document.querySelector(`tr[data-id="${id}"]`);
-  const newPassword = row.querySelector('.pw-input').value;
+  const newPassword = row.querySelector('.pw-input').value.trim();
 
   fetch(`/app/settings/${id}`, {
     method: 'PUT',
@@ -78,11 +91,11 @@ function applyChanges(id) {
 }
 
 function setDefault(id) {
-  fetch(`/app/settings/${id}/default`, {method: 'POST'})
+  fetch(`/app/settings/${id}/default`, { method: 'POST' })
     .then(() => {
       document.querySelectorAll('.default-radio').forEach(r => r.checked = false);
       document.querySelector(`tr[data-id="${id}"] .default-radio`).checked = true;
-  });
+    });
 }
 
 function setExpert(id, value) {
