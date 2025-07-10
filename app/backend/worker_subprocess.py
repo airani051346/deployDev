@@ -1,4 +1,4 @@
-import sys, time, os, re, json, logging, sqlite3, paramiko
+import sys, time, os, re, json, sqlite3, paramiko
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, '..', 'zero_touch.db')
@@ -11,7 +11,12 @@ def db():
     conn.row_factory = sqlite3.Row
     return conn
 
-def wait_for_prompt(shell, timeout=10, grace_period=1, skip_grace=False):
+def wait_for_prompt(shell, pattern=None, timeout=10, grace_period=1, skip_grace=False):
+    """
+    Wait for shell prompt.
+    - If pattern is given, use it.
+    - Otherwise use PROMPT_PATTERN.
+    """
     buffer = ''
     start_time = time.time()
     prompt_detected_time = None
@@ -22,11 +27,15 @@ def wait_for_prompt(shell, timeout=10, grace_period=1, skip_grace=False):
             buffer += part
             print(part, end='', flush=True)
 
-            if PROMPT_PATTERN.search(buffer):
-                if not prompt_detected_time:
-                    prompt_detected_time = time.time()
-                elif skip_grace or time.time() - prompt_detected_time >= grace_period:
+            if pattern:
+                if pattern.search(buffer):
                     break
+            else:
+                if PROMPT_PATTERN.search(buffer):
+                    if not prompt_detected_time:
+                        prompt_detected_time = time.time()
+                    elif skip_grace or time.time() - prompt_detected_time >= grace_period:
+                        break
 
         elif prompt_detected_time:
             break
@@ -38,8 +47,7 @@ def wait_for_prompt(shell, timeout=10, grace_period=1, skip_grace=False):
 
     return buffer.strip()
 
-def process_lines(shell, lines, stop_keywords, expert_pass, worker_id, start_line=0, current_log=''):
-    #stop_keywords = [kw.lower() for kw in (stop_keywords or [])]
+def process_lines(shell, lines, stop_keywords, expert_user, expert_pass, worker_id, start_line=0, current_log=''):
     stop_keywords = [kw.strip().strip('"').lower() for kw in (stop_keywords or [])]
     conn = db()
     c = conn.cursor()
@@ -53,10 +61,8 @@ def process_lines(shell, lines, stop_keywords, expert_pass, worker_id, start_lin
             c.execute("UPDATE workers SET log=? WHERE id=?", (current_log, worker_id))
             conn.commit()
 
-    def detect_prompt():
-        return wait_for_prompt(shell, timeout=10, grace_period=1)
-
     last_line_number = start_line
+    current_prompt_pattern = None  # If set by !PROMPT:
 
     for line_num, line in enumerate(lines, start=start_line + 1):
         last_line_number = line_num
@@ -68,37 +74,95 @@ def process_lines(shell, lines, stop_keywords, expert_pass, worker_id, start_lin
             success = False
             break
 
-        if stripped == "enter_expert_mode:":
-            shell.send("expert\n")
-            output = detect_prompt()
-            append("> expert\n" + output)
-            if "password" in output.lower():
-                shell.send(expert_pass + "\n")
-                output = detect_prompt()
-                append("> (expert password)\n" + output)
-            if "#" in output:
-                append("✅ Expert mode entered.")
+        # Handle !PROMPT:
+        if stripped.lower().startswith("!prompt:"):
+            prompt_str = stripped.split(":", 1)[1].strip()
+            current_prompt_pattern = re.compile(prompt_str)
+            append(f"🔖 Custom prompt set for next line: `{prompt_str}`")
+            continue
+
+        # Handle !CONTROL:
+        if stripped.lower().startswith("!control:"):
+            parts = stripped.split(":", 1)
+            ctrl_and_json = parts[1].strip()
+            if " " in ctrl_and_json:
+                ctrl, json_part = ctrl_and_json.split(" ", 1)
+                ctrl = ctrl.strip().lower()
+                ctrl_data = json.loads(json_part.strip())
             else:
-                append("🛑 Failed to enter expert mode.")
-                success = False
-            continue
+                ctrl = ctrl_and_json.strip().lower()
+                ctrl_data = {}
 
-        if stripped == "exit_expert_mode:":
-            shell.send("exit\n")
-            output = detect_prompt()
-            append("> exit\n" + output)
-            continue
+            if ctrl == "enter_expert_mode":
+                # Required parts
+                cmd = ctrl_data.get("cmd", "expert")
+                expect = ctrl_data.get("expect")
+                send_username = ctrl_data.get("send_username", False)
+                expect2 = ctrl_data.get("expect2")
+                prompt_success = ctrl_data.get("prompt_success", "#")
 
+                append(f"🔖 Enter expert mode: sending `{cmd}`")
+                shell.send(cmd + "\n")
+
+                if expect:
+                    output = wait_for_prompt(shell, pattern=re.compile(expect))
+                    append(f"[expect: {expect}]\n{output}")
+                else:
+                    output = wait_for_prompt(shell)
+                    append(output)
+
+                if send_username:
+                    shell.send(expert_user + "\n")
+                    append(f"[SENT] {expert_user}")
+
+                if expect2:
+                    output = wait_for_prompt(shell, pattern=re.compile(expect2))
+                    append(f"[expect2: {expect2}]\n{output}")
+
+                # Always send expert password
+                shell.send(expert_pass + "\n")
+                output = wait_for_prompt(shell)
+                append("[SENT] (expert password)\n" + output)
+
+                if prompt_success and re.search(prompt_success, output):
+                    append(f"✅ Expert mode entered — saw `{prompt_success}`.")
+                else:
+                    append(f"🛑 Failed to enter expert mode — `{prompt_success}` not found.")
+                    success = False
+                continue
+
+            elif ctrl == "end_expert_commands":
+                # same flexible JSON structure
+                end_cmd = ctrl_data.get("cmd", "exit")
+                prompt_success = ctrl_data.get("prompt_success", ">")
+
+                shell.send(end_cmd + "\n")
+                output = wait_for_prompt(shell)
+                append(f"[SENT] {end_cmd}\n{output}")
+
+                if prompt_success and re.search(prompt_success, output):
+                    append(f"✅ Exited expert mode — saw `{prompt_success}`.")
+                else:
+                    append(f"⚠️ Could not confirm expert exit with `{prompt_success}`.")
+                continue
+            else:
+                append(f"❌ Unknown CONTROL: {ctrl}")
+                continue    
+                
+        # Normal command
         shell.send(stripped + "\n")
-        output = detect_prompt()
-        append(f"> {stripped}\n{output}")
+        output = wait_for_prompt(shell, pattern=current_prompt_pattern)
+        append(f"[SENT] {stripped}\n{output}")
 
+        # Reset custom pattern after use
+        current_prompt_pattern = None
+
+        # Check for stop keywords
         if any(re.search(kw, output, re.IGNORECASE) for kw in stop_keywords):
             append(f"🛑 Error keyword detected — stopping.")
             success = False
             break
 
-        # ✅ update log + last_line after each line
         c.execute("UPDATE workers SET last_line=? WHERE id=?", (line_num, worker_id))
         conn.commit()
 
@@ -179,7 +243,7 @@ def run_worker_lines(worker_id):
 
         wait_for_prompt(shell, timeout=5, skip_grace=True)
 
-        success, final_line = process_lines(shell, lines[last_line:], stop_keywords, expert_pass, worker_id, start_line=last_line, current_log=current_log)
+        success, final_line = process_lines(shell, lines[last_line:], stop_keywords, expert_user, expert_pass, worker_id, start_line=last_line, current_log=current_log)
 
         shell.close()
         client.close()
@@ -189,7 +253,6 @@ def run_worker_lines(worker_id):
                      WHERE id = (SELECT discovered_id FROM workers WHERE id=?)""",
                   ('finished' if success else 'stopped', worker_id))
 
-        # ✅ keep last_line at last valid line
         c.execute("UPDATE workers SET last_line=? WHERE id=?", (final_line, worker_id))
         conn.commit()
 
@@ -200,10 +263,6 @@ def run_worker_lines(worker_id):
         print(f"✅ Worker {worker_id} done. Stop-Flag reset.")
 
 def load_stop_keywords(hw_type):
-    """
-    Load stop keywords from HWType.err_keywords where Type matches hw_type.
-    Keeps the double quotes.
-    """
     conn = db()
     c = conn.cursor()
     keywords = []
@@ -212,17 +271,14 @@ def load_stop_keywords(hw_type):
         row = c.execute("SELECT err_keywords FROM HWType WHERE Type = ?", (hw_type,)).fetchone()
         if row and row['err_keywords']:
             raw = row['err_keywords']
-            # Split by commas and keep quotes
             keywords = [kw.strip() for kw in raw.split(',') if kw.strip()]
 
     conn.close()
 
     if not keywords:
-        # Fallback, also quoted for consistency
         keywords = ['"error"', '"fail"', '"denied"']
 
     return keywords
-
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
