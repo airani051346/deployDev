@@ -315,6 +315,7 @@ def discovered():
         d_id = data.get('id')
 
         if not d_id:
+            # Insert new discovered
             ip = data.get('ip')
             name = data.get('name', '')
             template_id = data.get('template_id') or 1
@@ -363,25 +364,9 @@ def discovered():
 
         try:
             c.execute("""
-                UPDATE discovered SET
-                    name=?,
-                    template_id=?,
-                    variables=?,
-                    status=?,
-                    hw_type=?,
-                    expert_cred_id=?,
-                    setting_id=?
-                WHERE id=?
+                UPDATE discovered SET  name=?, template_id=?, variables=?, status=?, hw_type=?,  expert_cred_id=?, setting_id=?  WHERE id=?
             """, (
-                name,
-                template_id,
-                json.dumps(current_vars),
-                status,
-                hw_type,
-                expert_cred_id,
-                setting_id,
-                d_id
-            ))
+                name, template_id, json.dumps(current_vars), status, hw_type, expert_cred_id, setting_id, d_id ))
             conn.commit()
             return jsonify(status="updated", id=d_id)
         except Exception as e:
@@ -389,7 +374,11 @@ def discovered():
             return jsonify(error=f"Database update failed: {str(e)}"), 500
 
     # GET
-    rows = c.execute("SELECT * FROM discovered").fetchall()
+    rows = c.execute("""
+        SELECT d.*,
+               CASE WHEN w.id IS NOT NULL THEN 1 ELSE 0 END AS has_worker  FROM discovered d LEFT JOIN workers w ON w.discovered_id = d.id
+    """).fetchall()
+
     return jsonify([dict(r) for r in rows])
 
 @app.route('/app/discovered/<int:id>', methods=['DELETE'])
@@ -620,8 +609,6 @@ def hwtypes():
         c.execute("INSERT INTO HWType(Type, err_keywords) VALUES (?, ?)", (name, err_keywords))
         conn.commit()
         return jsonify(status='ok')
-    
-    print(f"bin hier")
 
     rows = c.execute("SELECT id, Type, err_keywords FROM HWType").fetchall()
     print([{"id": r["id"], "name": r["Type"], "err_keywords": r["err_keywords"]} for r in rows])
