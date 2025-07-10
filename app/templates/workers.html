@@ -2,63 +2,109 @@
 {% block title %}Workers{% endblock %}
 
 {% block content %}
+ 
+
 <h2 class="mb-4 text-xl font-semibold">Worker Dashboard</h2>
 
-<div style="margin-bottom: 12px;">
-  Filter by IP:
-  <input type="text" id="ip-filter" placeholder="e.g. 192.168.1.10" style="padding: 6px; width: 250px; margin-right: 16px;">
-  Filter by Status:
-  <select id="status-filter" style="padding: 6px; margin-right: 16px;">
+<style>
+  .modal-content {
+    background-color: #fff;   /* Solid white background */
+    color: #000;              /* Ensure readable text */
+  }
+    .nav-tabs {
+    border-bottom: 2px solid #dee2e6;
+  }
+  .nav-tabs .nav-link {
+    border: 1px solid transparent;
+    border-top-left-radius: 0.375rem;
+    border-top-right-radius: 0.375rem;
+    margin-right: 2px;
+  }
+  .nav-tabs .nav-link.active {
+    border-color: #dee2e6 #dee2e6 #fff;
+    background-color: #fff;
+  }
+  .tab-content {
+    border: 1px solid #dee2e6;
+    border-top: none;
+    padding: 1rem;
+    background: #fff;
+  }
+</style>
+
+<div class="mb-3">
+  <label>Filter by IP:</label>
+  <input type="text" id="ip-filter" placeholder="e.g. 192.168.1.10" class="form-control d-inline-block w-auto mx-2">
+  <label>Filter by Status:</label>
+  <select id="status-filter" class="form-select d-inline-block w-auto mx-2">
     <option value="">All</option>
     <option value="claimed">Claimed</option>
     <option value="running">Running</option>
     <option value="error">Error</option>
     <option value="stopped">Stopped</option>
   </select>
-  <button onclick="clearFilters()" style="padding: 6px;">Clear Filters</button>
+  <button onclick="clearFilters()" class="btn btn-secondary">Clear Filters</button>
 </div>
 
 <div class="table-responsive">
-  <table class="table" id="worker-table">
-    <thead>
+  <table class="table table-bordered table-hover">
+    <thead class="table-light">
       <tr>
         <th>ID</th>
         <th>Discovered ID</th>
         <th>IP Address</th>
         <th>Status</th>
         <th>PID</th>
-        <th>Stored Config</th>
         <th>Actions</th>
-        <th>Log</th>
       </tr>
     </thead>
     <tbody id="workers-body"></tbody>
   </table>
 </div>
 
+<!-- Bootstrap Modal -->
+<div class="modal fade" id="workerModal" tabindex="-1" aria-labelledby="workerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="workerModalLabel">Worker Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+
+        <ul class="nav nav-tabs mb-3" id="workerTab" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="config-tab" data-bs-toggle="tab" data-bs-target="#tab-config" type="button" role="tab">Stored Config</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="log-tab" data-bs-toggle="tab" data-bs-target="#tab-log" type="button" role="tab">Log</button>
+          </li>
+        </ul>
+
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="tab-config" role="tabpanel">
+            <pre id="modal-config" class="bg-light p-3 border rounded" style="max-height:400px; overflow:auto;"></pre>
+          </div>
+          <div class="tab-pane fade" id="tab-log" role="tabpanel">
+            <button class="btn btn-sm btn-primary mb-3" onclick="refreshLog()">Refresh Log</button>
+            <pre id="modal-log" class="bg-dark text-white p-3 border rounded" style="max-height:400px; overflow:auto; white-space:pre-wrap;"></pre>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 let allWorkers = [];
 let discoveredMap = {};
 let discoveredStatusMap = {};
-let credentialsList = [];
-const activeSSEConnections = {};
-
-function closeSSEConnection(workerId) {
-  if (activeSSEConnections[workerId]) {
-    activeSSEConnections[workerId].close();
-    delete activeSSEConnections[workerId];
-  }
-}
-
-function colorizeLog(raw) {
-  return (raw || '')
-    .replace(/^✅.*/gm, m => `<span class="success">${m}</span>`)
-    .replace(/^❌.*/gm, m => `<span class="error">${m}</span>`)
-    .replace(/^ERR: .*/gm, m => `<span class="error">${m}</span>`)
-    .replace(/^> .*/gm, m => `<span class="command">${m}</span>`)
-    .replace(/^.*\^.*$/gm, m => `<span class="pointer">${m}</span>`)
-    .replace(/.*Bad parameter.*/gi, m => `<span class="error">${m}</span>`);
-}
+let currentModalWorker = null;
+let workerModal = null;
 
 function clearFilters() {
   document.getElementById('ip-filter').value = '';
@@ -66,266 +112,79 @@ function clearFilters() {
   applyFilters();
 }
 
-function streamWorkerLog(id) {
-  closeSSEConnection(id);
-  const logEl = document.getElementById(`log-${id}`);
-  logEl.innerHTML = '';
-  logEl.dataset.live = 'true'; // markiere als aktives SSE-Log
-
-  const evtSource = new EventSource(`/app/worker/${id}/sse`);
-  activeSSEConnections[id] = evtSource;
-  evtSource.onmessage = e => {
-    if (e.data === '[SSE_END]') {
-      evtSource.close();
-      return;
-    }
-    const raw = (e.data || '').replace(/\\n/g, '\n');
-    const html = colorizeLog(raw);
-    logEl.innerHTML += html + '<br>'; // ensure each line breaks properly
-    logEl.scrollTop = logEl.scrollHeight;
-  };
-
-  evtSource.onerror = err => {
-    logEl.innerHTML += '<span class="error">❌ SSE connection error</span><br>';
-    evtSource.close();
-  };
-}
-function pollActiveWorkerLogs() {
-  allWorkers.forEach(w => {
-    const logEl = document.getElementById(`log-${w.id}`);
-    const statusEl = document.getElementById(`status-${w.id}`);
-    const isLive = logEl?.dataset.live === 'true';
-    const isRunning = statusEl?.innerText === 'running';
-
-    if (isLive && isRunning) {
-      fetch(`/app/worker/${w.id}/log_tail`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.log) {
-            logEl.innerHTML = colorizeLog(data.log);
-            logEl.scrollTop = logEl.scrollHeight;
-          }
-        });
-    }
-  });
-}
-
-async function toggleWorker(id) {
-  const btn = document.getElementById(`toggle-${id}`);
-  const logEl = document.getElementById(`log-${id}`);
-  const pidField = document.getElementById(`pid-${id}`);
-  const statusField = document.getElementById(`status-${id}`);
-
-  if (!btn || !logEl) return;
-
-  if (btn.innerText === 'Start Configuration') {
-    // Starting
-    logEl.innerText = '🔄 Starting configuration...\n';
-    logEl.dataset.live = 'true';
-
-    const res = await fetch(`/app/workers/${id}/start`, { method: 'POST' });
-    const data = await res.json();
-
-    if (data.error) {
-      logEl.innerText += `❌ ${data.error}\n`;
-      return;
-    }
-
-    btn.innerText = 'Stop Worker';
-    pidField.innerText = data.pid || '-';
-    statusField.innerText = 'running';
-
-    // Open SSE
-    const evtSource = new EventSource(`/app/worker/${id}/sse`);
-    activeSSEConnections[id] = evtSource;
-
-    evtSource.onmessage = e => {
-      if (e.data === '[SSE_END]') {
-        evtSource.close();
-        delete activeSSEConnections[id];
-        btn.innerText = 'Start Configuration';
-        pidField.innerText = '-';
-        statusField.innerText = 'finished';
-        logEl.dataset.live = 'false';
-        return;
-      }
-      logEl.innerHTML += colorizeLog(e.data) + '<br>';
-      logEl.scrollTop = logEl.scrollHeight;
-    };
-
-    evtSource.onerror = () => {
-      logEl.innerHTML += '<span class="error">❌ SSE connection error</span><br>';
-      evtSource.close();
-      delete activeSSEConnections[id];
-      btn.innerText = 'Start Configuration';
-      logEl.dataset.live = 'false';
-    };
-
-  } else {
-    // Stopping
-    logEl.innerText += '\n🛑 Stopping worker...\n';
-    const res = await fetch(`/app/workers/${id}/stop`, { method: 'POST' });
-    const data = await res.json();
-
-    if (data.success) {
-      logEl.innerText += '✅ Worker stopped.\n';
-      btn.innerText = 'Start Configuration';
-      pidField.innerText = '-';
-      statusField.innerText = 'stopped';
-      closeSSEConnection(id);
-    } else {
-      logEl.innerText += `❌ Error: ${data.error || 'Could not stop worker'}`;
-    }
-  }
-}
-
-function toggleStoredConfig(id) {
-  const box = document.getElementById(`stored-${id}`);
-  const button = document.querySelector(`button[data-toggle="${id}"]`);
-  const isHidden = box.style.display === 'none' || box.style.display === '';
-  box.style.display = isHidden ? 'block' : 'none';
-  button.innerText = isHidden ? 'Hide Stored Config' : 'Show Stored Config';
-  localStorage.setItem(`storedconfig-visible-${id}`, isHidden ? 'true' : 'false');
+function colorizeLog(raw) {
+  return (raw || '')
+    .replace(/^✅.*/gm, m => `<span class="text-success fw-bold">${m}</span>`)
+    .replace(/^❌.*/gm, m => `<span class="text-danger fw-bold">${m}</span>`)
+    .replace(/^ERR: .*/gm, m => `<span class="text-danger">${m}</span>`)
+    .replace(/^> .*/gm, m => `<span class="text-info">${m}</span>`)
+    .replace(/^.*\^.*$/gm, m => `<span class="text-warning">${m}</span>`);
 }
 
 function applyFilters() {
   const ipFilter = document.getElementById('ip-filter').value.trim();
   const statusFilter = document.getElementById('status-filter').value;
   const tbody = document.getElementById('workers-body');
-  
-  // Create a fragment to build changes off-DOM
-  const fragment = document.createDocumentFragment();
-  const rowsToKeep = new Set();
-  
-  // Track which workers should be visible
-  const visibleWorkers = [];
-  
-  // First pass: Identify visible workers
+  tbody.innerHTML = '';
+
   for (const w of allWorkers) {
-    const discovered_ip = discoveredMap[w.discovered_id] || '';
+    const ip = discoveredMap[w.discovered_id] || '';
     const status = discoveredStatusMap[w.discovered_id] || '';
-    const matchesIP = !ipFilter || discovered_ip.includes(ipFilter);
+    const matchesIP = !ipFilter || ip.includes(ipFilter);
     const matchesStatus = !statusFilter || status === statusFilter;
 
     if (matchesIP && matchesStatus) {
-      visibleWorkers.push(w);
-      rowsToKeep.add(w.id);
-    }
-  }
-
-  // Second pass: Update existing rows or create new ones
-  visibleWorkers.forEach(w => {
-    let tr = document.getElementById(`row-${w.id}`);
-    const isNewRow = !tr;
-    
-    if (isNewRow) {
-      tr = document.createElement('tr');
-      tr.id = `row-${w.id}`;
-
-      // Create cell structure
+      const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${w.id}</td>
         <td>${w.discovered_id}</td>
-        <td>${discoveredMap[w.discovered_id] || ''}</td>
-        <td id="status-${w.id}">${discoveredStatusMap[w.discovered_id] || ''}</td>
-        <td id="pid-${w.id}">${w.pid ?? '-'}</td>
+        <td>${ip}</td>
+        <td>${status}</td>
+        <td>${w.pid ?? '-'}</td>
         <td>
-          <button class="btn-toggle" data-toggle="${w.id}">${localStorage.getItem(`storedconfig-visible-${w.id}`) === 'true' ? 'Hide Stored Config' : 'Show Stored Config'}</button><br>
-          <pre class="storedconfig" id="stored-${w.id}" style="display:${localStorage.getItem(`storedconfig-visible-${w.id}`) === 'true' ? 'block' : 'none'};">${w.storedconfig || ''}</pre>
-        </td>
-        <td>
-          <button class="btn-start" id="toggle-${w.id}">${discoveredStatusMap[w.discovered_id] === 'running' ? 'Stop Worker' : 'Start Configuration'}</button><br><br>
-          <button class="btn-delete" data-delete="${w.id}">Delete</button>
-        </td>
-        <td>
-          
-          <button class="btn-view-log" data-viewlog="${w.id}">View Status</button><br><br>
-          <pre class="worker-log" id="log-${w.id}" data-live="false" style="width:450px; height:100px; overflow:auto; white-space:pre-wrap;"></pre>
+          <button class="btn btn-sm btn-primary mb-2" onclick="openModal(${w.id})">Open</button><br>
+          <button class="btn btn-sm btn-success mb-2" onclick="toggleWorker(${w.id})">${status === 'running' ? 'Stop Worker' : 'Start Configuration'}</button><br>
+          <button class="btn btn-sm btn-danger" onclick="deleteWorker(${w.id})">Delete</button>
         </td>
       `;
-      //${w.log ? `<button class="btn-view-log" data-viewlog="${w.id}">View Log</button><br><br>` : ''}
-      // Add new row to fragment
-      fragment.appendChild(tr);
+      tbody.appendChild(tr);
     }
-    
-    // Update existing row without recreating elements
-    if (!isNewRow) {
-      // Update status and button text
-      document.getElementById(`status-${w.id}`).textContent = discoveredStatusMap[w.discovered_id] || '';
-      document.getElementById(`toggle-${w.id}`).textContent = 
-        discoveredStatusMap[w.discovered_id] === 'running' ? 'Stop Worker' : 'Start Configuration';
-    }
-    
-    // Always update stored config visibility
-    const toggleBtn = tr.querySelector(`[data-toggle="${w.id}"]`);
-    if (toggleBtn) {
-      toggleBtn.textContent = localStorage.getItem(`storedconfig-visible-${w.id}`) === 'true' ? 
-        'Hide Stored Config' : 'Show Stored Config';
-      tr.querySelector(`#stored-${w.id}`).style.display = 
-        localStorage.getItem(`storedconfig-visible-${w.id}`) === 'true' ? 'block' : 'none';
-    }
-    
-    // Only initialize new logs or update non-live logs
-    const logEl = document.getElementById(`log-${w.id}`);
-    if (logEl && (isNewRow || logEl.dataset.live === 'false')) {
-      logEl.innerHTML = colorizeLog(w.log || '');
-    }
-    
-    // Add event listeners for new elements
-    if (isNewRow) {
-      tr.querySelector(`[data-toggle="${w.id}"]`).addEventListener('click', () => toggleStoredConfig(w.id));
-      tr.querySelector(`#toggle-${w.id}`).addEventListener('click', () => toggleWorker(w.id));
-      tr.querySelector(`[data-delete="${w.id}"]`).addEventListener('click', () => deleteWorker(w.id));
-      const viewBtn = tr.querySelector(`[data-viewlog="${w.id}"]`);
-      if (viewBtn) {
-        viewBtn.addEventListener('click', async () => {
-          const logEl = document.getElementById(`log-${w.id}`);
-          logEl.dataset.live = 'false';
-          const res = await fetch(`/app/worker/${w.id}/log`);
-          const data = await res.json();
-          logEl.innerHTML = colorizeLog(data.log || '');
-          logEl.scrollTop = logEl.scrollHeight;
-          
-        });
-      }
-    }
-    
-    // Start streaming if needed
-    if (discoveredStatusMap[w.discovered_id] === 'running' && logEl.dataset.live === 'false') {
-      streamWorkerLog(w.id);
-    }
+  }
+}
+
+function openModal(id) {
+  const w = allWorkers.find(x => x.id === id);
+  if (!w) return;
+
+  currentModalWorker = w;
+
+  document.getElementById('modal-config').textContent = w.storedconfig || '--';
+
+  fetch(`/app/worker/${w.id}/log`).then(r => r.json()).then(data => {
+    document.getElementById('modal-log').innerHTML = colorizeLog(data.log || '--');
   });
-  
-  // Add new rows to DOM
-  tbody.appendChild(fragment);
-  
-  // Remove rows that shouldn't be visible
-  Array.from(tbody.children).forEach(row => {
-    if (!rowsToKeep.has(parseInt(row.id.replace('row-', '')))) {
-      // Close SSE connection before removing
-      const workerId = parseInt(row.id.replace('row-', ''));
-      if (activeSSEConnections[workerId]) {
-        activeSSEConnections[workerId].close();
-        delete activeSSEConnections[workerId];
-      }
-      row.remove();
-    }
+
+  workerModal = new bootstrap.Modal(document.getElementById('workerModal'));
+  workerModal.show();
+}
+
+function refreshLog() {
+  if (!currentModalWorker) return;
+  fetch(`/app/worker/${currentModalWorker.id}/log`).then(r => r.json()).then(data => {
+    document.getElementById('modal-log').innerHTML = colorizeLog(data.log || '--');
   });
 }
 
-async function refresh() {
-  const res = await fetch('/app/workers');
-  const { workers, credentials } = await res.json();
+async function toggleWorker(id) {
+  const w = allWorkers.find(x => x.id === id);
+  const status = discoveredStatusMap[w.discovered_id] || '';
 
-  const discoveredRes = await fetch('/app/discovered');
-  const discoveredList = await discoveredRes.json();
-
-  allWorkers = workers;
-  credentialsList = credentials;
-  discoveredMap = Object.fromEntries(discoveredList.map(d => [d.id, d.ip]));
-  discoveredStatusMap = Object.fromEntries(discoveredList.map(d => [d.id, d.status]));
-
-  applyFilters();
+  if (status !== 'running') {
+    await fetch(`/app/workers/${id}/start`, { method: 'POST' });
+  } else {
+    await fetch(`/app/workers/${id}/stop`, { method: 'POST' });
+  }
+  refresh();
 }
 
 async function deleteWorker(id) {
@@ -334,12 +193,23 @@ async function deleteWorker(id) {
   refresh();
 }
 
+async function refresh() {
+  const res = await fetch('/app/workers');
+  const { workers } = await res.json();
+
+  const discoveredRes = await fetch('/app/discovered');
+  const discoveredList = await discoveredRes.json();
+
+  allWorkers = workers;
+  discoveredMap = Object.fromEntries(discoveredList.map(d => [d.id, d.ip]));
+  discoveredStatusMap = Object.fromEntries(discoveredList.map(d => [d.id, d.status]));
+
+  applyFilters();
+}
+
 document.getElementById('ip-filter').addEventListener('input', applyFilters);
 document.getElementById('status-filter').addEventListener('change', applyFilters);
 
 refresh();
-// setInterval(pollActiveWorkerLogs, 5000);
-
-// setInterval(refresh, 15000);
 </script>
 {% endblock %}
