@@ -416,7 +416,9 @@ def workers():
         item['log'] = item.get('log') or ''
         with worker_lock:
             proc = worker_processes.get(row['id'])
-            item['pid'] = proc.pid if proc and proc.poll() is None else None
+            #item['pid'] = proc.pid if proc and proc.poll() is None else None
+            item['pid'] = row['pid'] if row['pid'] else None
+
         result.append(item)
     return jsonify({"workers": result, "credentials": [dict(r) for r in creds]})
 
@@ -469,6 +471,7 @@ def worker_sse(worker_id):
             time.sleep(1)
 
     return Response(stream_with_context(stream()), mimetype='text/event-stream')
+
 @app.route('/app/workers/<int:id>/credential', methods=['POST'])
 def update_worker_credential(id):
     setting_id = request.json.get('setting_id')
@@ -505,20 +508,23 @@ def worker_log(id):
 
 @app.route('/app/workers/<int:id>/stop', methods=['POST'])
 def stop_worker(id):
-    with worker_lock:
-        proc = worker_processes.get(id)
-        if proc and proc.poll() is None:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-            proc.wait(timeout=5)
-            worker_processes.pop(id, None)
-
-    # Also update DB
     conn = db()
     c = conn.cursor()
+    row = c.execute("SELECT pid FROM workers WHERE id=?", (id,)).fetchone()
+    if not row or not row['pid']:
+        return jsonify(success=False, error="No PID")
+
+    pid = row['pid']
+    try:
+        os.killpg(os.getpgid(pid), signal.SIGTERM)
+    except ProcessLookupError:
+        pass  # already dead
+
     c.execute("UPDATE workers SET pid=NULL WHERE id=?", (id,))
     conn.commit()
-    return jsonify(success=True)
+    conn.close()
 
+    return jsonify(success=True)
 
 @app.route('/app/workers/<int:id>/status', methods=['GET'])
 def get_worker_status(id):
