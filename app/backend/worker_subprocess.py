@@ -160,6 +160,7 @@ def process_lines(shell, lines, stop_keywords, expert_user, expert_pass, worker_
         # Check for stop keywords
         if any(re.search(kw, output, re.IGNORECASE) for kw in stop_keywords):
             append(f"🛑 Error keyword detected — stopping.")
+            last_line_number = line_num - 1 if line_num > 0 else 0
             success = False
             break
 
