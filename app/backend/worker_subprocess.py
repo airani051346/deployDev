@@ -241,6 +241,7 @@ def run_worker_lines(worker_id):
         shell = client.invoke_shell()
         shell.settimeout(2)
 
+        
         wait_for_prompt(shell, timeout=5, skip_grace=True)
 
         success, final_line = process_lines(shell, lines[last_line:], stop_keywords, expert_user, expert_pass, worker_id, start_line=last_line, current_log=current_log)
