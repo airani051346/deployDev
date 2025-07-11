@@ -18,9 +18,9 @@ CREATE TABLE settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 password TEXT NOT NULL, is_default INTEGER DEFAULT 0, is_expert BOOLEAN DEFAULT 0);
-INSERT INTO settings VALUES(2,'admin','zubur1',1,0);
-INSERT INTO settings VALUES(3,'rouser','zubur1',0,0);
-INSERT INTO settings VALUES(6,'expert1','zubur1',0,1);
+INSERT INTO settings VALUES(2,'admin','Vubur1',1,0);
+INSERT INTO settings VALUES(3,'rouser','Vubur1',0,0);
+INSERT INTO settings VALUES(6,'expert1','Vubur1',0,1);
 CREATE TABLE HWType (id INTEGER PRIMARY KEY, Type TEXT, err_keywords TEXT DEFAULT '');
 INSERT INTO HWType VALUES(1,'cp-spark','"invalid","error","failed","permission\s*denied","command\s*not\s*found","not\s*recognized","cannot","denied","unexpected","syntax\s*error","Bad\s*parameter"');
 INSERT INTO HWType VALUES(2,'cp-quantum','"invalid", "error", "failed", "permission\s*denied", "command\s*not\s*found", "not\s*recognized", "cannot", "denied", "unexpected", "syntax\s*error", "Bad\s*parameter"');
