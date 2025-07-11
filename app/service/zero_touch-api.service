@@ -1,0 +1,27 @@
+[Unit]
+Description=Zero Touch Deployment API
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+Environment="PATH=/opt/network_manager/app/venv/bin"
+WorkingDirectory=/opt/network_manager/app
+Environment="PATH=/opt/network_manager/app/venv/bin"
+ExecStart=/opt/network_manager/app/venv/bin/gunicorn \
+  --log-level info \
+  --access-logfile - \
+  --error-logfile - \
+  --workers 4 \
+  --threads 10 \
+  --chdir /opt/network_manager/app \
+  --bind 127.0.0.1:5000 \
+  backend.app:app
+
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target
