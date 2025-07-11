@@ -121,6 +121,17 @@ function colorizeLog(raw) {
     .replace(/^.*\^.*$/gm, m => `<span class="text-warning">${m}</span>`);
 }
 
+function attachWorkerSSE(workerId) {
+  const sse = new EventSource(`/app/worker/${workerId}/sse`);
+  sse.onmessage = (e) => {
+    if (e.data === '[SSE_END]') {
+      sse.close();
+      refresh();
+    }
+    // Optionally handle log streaming here if you want
+  };
+}
+
 function applyFilters() {
   const ipFilter = document.getElementById('ip-filter').value.trim();
   const statusFilter = document.getElementById('status-filter').value;
@@ -134,6 +145,8 @@ function applyFilters() {
     const matchesStatus = !statusFilter || status === statusFilter;
 
     if (matchesIP && matchesStatus) {
+      const running = !!w.pid;  // real running flag
+      const buttonLabel = running ? '🛑 Stop Worker' : '▶️ Start Configuration';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${w.id}</td>
@@ -143,7 +156,7 @@ function applyFilters() {
         <td>${w.pid ?? '-'}</td>
         <td>
           <button class="btn btn-sm btn-primary mb-2" onclick="openModal(${w.id})">🔭 View</button><br>
-          <button class="btn btn-sm btn-success mb-2" onclick="toggleWorker(${w.id})">${status === 'running' ? '🛑 Stop Worker' : '▶️ Start Configuration'}</button><br>
+          <button class="btn btn-sm btn-success mb-2" onclick="toggleWorker(${w.id})">${buttonLabel}</button><br>
           <button class="btn btn-sm btn-danger" onclick="deleteWorker(${w.id})">🗑 Delete</button>
         </td>
       `;
@@ -177,14 +190,17 @@ function refreshLog() {
 
 async function toggleWorker(id) {
   const w = allWorkers.find(x => x.id === id);
-  const status = discoveredStatusMap[w.discovered_id] || '';
+  const running = !!w.pid;
 
-  if (status !== 'running') {
+  //const status = discoveredStatusMap[w.discovered_id] || '';
+
+  if (!running) {
     await fetch(`/app/workers/${id}/start`, { method: 'POST' });
+    attachWorkerSSE(id);
   } else {
     await fetch(`/app/workers/${id}/stop`, { method: 'POST' });
   }
-  refresh();
+  await refresh();
 }
 
 async function deleteWorker(id) {
