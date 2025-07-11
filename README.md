@@ -41,37 +41,63 @@ ________________________________________
  
 # User Workflow
  # Step 1: Define Templates
- ![image](https://github.com/user-attachments/assets/25b32313-1449-473c-b10a-a929a14afdd0)
+ 
+<img width="1772" height="774" alt="image" src="https://github.com/user-attachments/assets/009b9af0-3aa7-4090-b5f7-f16db8c0395e" />
 
 •	Navigate to the Templates tab<br>
 •	Create configuration templates <br>
-•	Variable with ascii char only. No – allowed only _<br>
-•	enter_expert_mode: and exit_expert_mode: allow to execute commands in the bash shell
-    entring and exiting "expert mode" is currently hardcoded in the worker_subrocess.py file. 
 
- # Template example: 
+in the template you can define variables: <br>
+    it can be just a variable without a default value. for eg:  {{name}}<br>
+    or including a default value. for eg: {{lan1_name | default('eth1-01')}}<br>
+<br>
+special controls: <br>
+```cmd
+!CONTROL: enter_expert_mode  <br>
+after this control you can add something like: <br>
+     {"cmd": "expert", "expect": "Password:", "send_username": false, "prompt_success": "#"}
+     this sends a command expert to the host on prompt it doe not wait for the username input but for the password. and waits for the prompt including #
+     
+     {"cmd": "ena", "expect": "login:", "send_username": true, "expect2": "Password:", "prompt_success": "#"}
+     this sends a command ena to the host on prompt it waits for the username and for the password. and waits for the prompt including #
+```
+```cmd
+!CONTROL: end_expert_commands
+    this prompt to to exit the proviliged mode
+    you can add a short sequense to follow
+    eg: {"cmd": "exit", "prompt_success": ">"}
+```
+```cmd
+   
+!PROMPT:
+    wait for the prompt.
+    eg:  \[Expert@.*\]# 
+```
+
+ ## Template example: 
+following template includes by purpose invalid commands to show the error keyword feature. but the structure is valid.
  ```bash
-set hostname {{hostname}}<br>
-set interface name WAN ipv4-address {{WAN_IPv4 | default('192.168.178.0')}} subnetmask {{WAN_SUBNET | default('255.255.255.0')}} default gateway {{default_gw | default('192.168.178.1')}}
-set interface name LAN1 ipv4-address {{LAN1_IPv4 | default('192.168.178.0')}} subnetmask {{LAN1_SUBNET | default('255.255.255.0')}} 
-set interface name LAN2 ipv4-address {{LAN2_IPv4 | default('192.168.178.0')}} subnetmask {{LAN2_SUBNET | default('255.255.255.0')}} 
-
-enter_expert_mode:
-ls -al
-exit_expert_mode:
-show diag
+set hostname {{hostname}}
 show interfaces table
+set interface {{lan1_name | default('eth1-01')}} ipv4-adddress {{lan1_ipv4 | default ('10.1.1.9')}} mask-length {{lan1_masklen | default ('24')}}
+set interface {{lan2_name | default('eth1')}} ipv4-adddress {{lan2_ipv4 | default ('10.1.1.9')}} mask-length {{lan2_masklen | default ('24')}}
+set interface {{lan3_name | default('vti')}} ipv4-adddress {{lan3_ipv4 | default ('10.1.1.9')}} mask-length {{lan3_masklen | default ('24')}}
+!CONTROL: enter_expert_mode {"cmd": "expert", "expect": "Password:", "send_username": false, "prompt_success": "#"}
+!PROMPT: \[Expert@.*\]#
+ls -al /storage
+!CONTROL: end_expert_commands {"cmd": "exit", "prompt_success": ">"}
+show diag
 ```
 
  # Step 2: Add HW Type and define error Keys
- ![image](https://github.com/user-attachments/assets/a7ef3df2-9a18-43af-8552-84a0d561840b)
+ <img width="1800" height="602" alt="image" src="https://github.com/user-attachments/assets/77652bcf-72fc-4d52-a51e-6e48abe5243b" />
+
 define a name and add err keys to stop pcecessing lines if it appears in the output of any line that has been<br>
 executed.
 example: "permission\\s*denied"       where the \\s* represents space in between the two words.
 
  # Step 3: Add Networks to Scan
-![image](https://github.com/user-attachments/assets/c13f6315-616a-429a-ab81-3dbca94ba242)
-
+<img width="1795" height="444" alt="image" src="https://github.com/user-attachments/assets/b4d86ffc-43ae-48d8-87f8-5a05e992a8ae" />
 
 If you don’t want to use nmap to scan your network please go to step 3<br>
 •	Go to the Networks tab<br>
@@ -79,20 +105,24 @@ If you don’t want to use nmap to scan your network please go to step 3<br>
 •	interval in seconds is under construction <br>
 •	Start scanning to discover devices<br>
 
-
  # Step 4: Review Discovered Devices
- ![image](https://github.com/user-attachments/assets/2f55be2b-149f-40a1-989c-2f0a1890fc04)
+ <img width="1893" height="586" alt="image" src="https://github.com/user-attachments/assets/21895fcb-f80b-49bc-969c-8f854e0bcde3" />
 
 •	Open the Discovered tab<br>
 •	Newly found or imported devices appear with status discovered<br>
+click edit to:
 •	Assign a hardware type and template to each device<br>
-Note: visible variables are the predefined in your selected template<br>
-•	Optionally, use the Import CSV feature for bulk additions<br>
-you can either use a csv file to import devices with following structure:<br>
+Note: your template variables appear on template change<br>
+<img width="786" height="508" alt="image" src="https://github.com/user-attachments/assets/2b36e802-608b-40b3-8b5f-b026d93509e8" />
+
+•	Optionally, use the Import CSV feature or API for bulk import<br>
+
+csv file with following structure:<br>
 ```csv
 192.168.1.10,embedded,Spark-PTK
 192.168.1.20,full,Spark-SD-WAN
 ```
+
 Where the first entry is the ip, second Hardware-type and third used template.<br>
 Or use an API call which is more enhanced.<br>
 ```API
@@ -109,15 +139,8 @@ URL: http://<your-server>:5000/app/discovered
 }
 ```
  
- # Step 5: Apply Variables
- ![image](https://github.com/user-attachments/assets/cfb12798-63ac-46cf-85c4-975ce4898a37)
-
-•	Apply Template,  Each template may require variables (e.g. hostname, interface_ip)<br>
-•	Apply HW Type<br>
 •	define Varianle values 
 •	select credentials and expert credentials as needed<br>
-
-You can import the devices over CSV File. see below
 
  # Step 6: Create Workers
 •	Once a device is ready, click Create Worker<br>
@@ -125,22 +148,25 @@ You can import the devices over CSV File. see below
 •	Device status changes to claimed<br>
 
  # Step 7: Start Worker Execution<br>
- ![image](https://github.com/user-attachments/assets/982ce36c-b22f-44ea-95b1-8a596954b55a)
+ <img width="1765" height="482" alt="image" src="https://github.com/user-attachments/assets/ece998e1-5513-4a36-a802-dadb0e184148" />
 
 •	Switch to the Workers tab<br>
 •	Click Start Configuration<br>
 •	SSH connects to the device and runs each line<br>
-•	Output is streamed live with color-coded feedback<br>
+<img width="787" height="618" alt="image" src="https://github.com/user-attachments/assets/22861815-cc36-429f-ae96-5b1e5464d2a1" />
 •	If an error keyword is matched, execution halts<br>
+
  # Step 8: Monitor and Debug
 •	Use View Log or Stream Log to monitor output<br>
 •	Failed tasks show error message and stop line<br>
-•	Restart or fix variables and try again if needed<br>
+<img width="785" height="488" alt="image" src="https://github.com/user-attachments/assets/73f773bb-d6fd-4051-a699-1a1a3d916478" />
+
+View logs: sudo journalctl -u zero_touch-api -f
+service restart: service zero_touch-api restart
 
  # Step 9: Cleanup or Finalize
 •	Stop or delete workers if needed<br>
 •	Device status will become finished, failed, or stopped<br>
- 
 ________________________________________
  # Directory Structure
 ```treeview
@@ -155,11 +181,10 @@ ________________________________________
 ```
 # error keyword 
 
-each HW-type can have its ohn error code/word definition. these words are used to stop proccessing the stored conifuration as sson as they appear on output.
+each HW-type can have its own error code/word definition. these words are used to stop proccessing the stored conifuration as sson as they appear on output.
 ```csv
 "invalid",    "error",    "failed",    "permission\\s*denied",    "command\\s*not\\s*found",    "not\\s*recognized",    "cannot",    "denied",    "Bad\\s*parameter"
 ```
-
 a restart will try to reexecute the same line again. In case you want to skipp that line, admin has to increase the value of line Nr in database.
 
 check last line Nr: 
@@ -167,9 +192,6 @@ check last line Nr:
 
 set new line nR to continue with:
     sqlite3 zero_touch.db "UPDATE workers SET last_line = 3 WHERE id = 1;"
-
-
-
 
 ________________________________________
  # REST APIs
